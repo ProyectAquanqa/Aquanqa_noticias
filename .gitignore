@@ -1,0 +1,17 @@
+# Ignorar entornos virtuales
+venv/
+myvenv/
+
+# Ignorar otros entornos virtuales comunes
+.env/
+.venv/
+
+# Archivos de Python innecesarios
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de configuración locales (opcional)
+*.sqlite3
+.DS_Store
