@@ -1,17 +1,28 @@
-# Ignorar entornos virtuales
+# Entornos virtuales
 venv/
 myvenv/
-
-# Ignorar otros entornos virtuales comunes
 .env/
 .venv/
 
-# Archivos de Python innecesarios
+# Archivos de caché de Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 
-# Archivos de configuración locales (opcional)
+# Bases de datos locales
 *.sqlite3
+
+# Archivos del sistema operativo
 .DS_Store
+
+# Archivos de configuración de IDEs
+.vscode/
+.idea/
+
+# Credenciales y secretos
+*.json
+!/aquanqa-notifications-firebase-adminsdk-fbsvc-1073c14b23.json
+.env
+
+# Archivos estáticos compilados (opcional)
+staticfiles/

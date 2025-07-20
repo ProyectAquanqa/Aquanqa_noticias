@@ -10,20 +10,34 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
+import os
+import environ
+import firebase_admin
 from pathlib import Path
+from firebase_admin import credentials
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Initialise environment variables and read .env file
+env = environ.Env()
+environ.Env.read_env(str(BASE_DIR.joinpath('.env')))
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9!3t+jg*%i$nz$=5@ya&kxbn#my1i9y(9vvw1s-xsx9ee9%%45'
+SECRET_KEY = env('SECRET_KEY')
+
+AUTHENTICATION_BACKENDS = [
+    'users.auth_backends.DNIAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
+
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env.bool('DEBUG', default=False)
 
 ALLOWED_HOSTS = []
 
@@ -37,11 +51,25 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+
+    # Local apps
+    'core',
+    'eventos',
+    'chatbot',
+    'users',
+    'notificaciones',
+
+    # Third-party apps
+    'rest_framework',
+    'corsheaders',
+    'drf_spectacular',
+    'django_filters',
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -79,7 +107,7 @@ DATABASES = {
         "USER": "root",
         "PASSWORD": "abcd123",
         "HOST": "127.0.0.1",
-        "PORT": "5432",
+        "PORT": "3306",
     }
 }
 
@@ -124,3 +152,44 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# CORS Configuration
+CORS_ALLOW_ALL_ORIGINS = True # For development only
+
+# Django REST Framework Configuration
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+    'DEFAULT_FILTER_BACKENDS': [
+        'django_filters.rest_framework.DjangoFilterBackend',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+}
+
+# Firebase Cloud Messaging (FCM) Configuration using firebase-admin
+FIREBASE_ADMIN_CREDENTIALS = os.getenv('FIREBASE_ADMIN_CREDENTIALS_PATH', BASE_DIR / 'firebase-credentials.json')
+
+# API DNI Configuration
+DNI_API_URL = "https://aplicativo.aquanqa.net/api/consulta-dni/"
+DNI_API_BEARER_TOKEN = "0d6924c7a31049297df548e0cb18390a7827c08b"
+
+# Media files (uploads)
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Inicializa Firebase solo si el archivo de credenciales existe
+if os.path.exists(FIREBASE_ADMIN_CREDENTIALS):
+    try:
+        cred = credentials.Certificate(FIREBASE_ADMIN_CREDENTIALS)
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app(cred)
+            print("Firebase Admin SDK inicializado correctamente.")
+    except Exception as e:
+        print(f"ADVERTENCIA: El archivo de credenciales de Firebase existe, pero no se pudo inicializar el SDK. Error: {e}")
+else:
+    print("ADVERTENCIA: Archivo de credenciales de Firebase no encontrado. Las notificaciones push estarán desactivadas.")
