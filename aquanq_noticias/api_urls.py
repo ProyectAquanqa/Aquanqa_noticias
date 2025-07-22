@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from eventos.views import EventoViewSet, EventoFeedView
 from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
 from chatbot.views import ChatbotKnowledgeBaseViewSet, ChatbotQueryView, ChatConversationViewSet
-from users.views import UserRegistrationView, UserProfileView, DniTokenObtainPairView
+from users.views import UserRegistrationView, UserProfileView, DniTokenObtainPairView, UserExistsView
 from rest_framework_simplejwt.views import TokenRefreshView
 
 router = DefaultRouter()
@@ -21,4 +21,6 @@ urlpatterns = [
     path('chatbot/', ChatbotQueryView.as_view(), name='chatbot-query'),
     path('users/register/', UserRegistrationView.as_view(), name='user-register'),
     path('profile/me/', UserProfileView.as_view(), name='user-profile'),
+    # Nueva URL para verificar existencia de usuario
+    path('users/exists/<str:dni>/', UserExistsView.as_view(), name='user-exists'),
 ] 

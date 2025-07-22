@@ -39,7 +39,7 @@ AUTHENTICATION_BACKENDS = [
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['10.166.181.44', '127.0.0.1', 'localhost']
 
 
 # Application definition
@@ -101,13 +101,13 @@ WSGI_APPLICATION = 'aquanq_noticias.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.mysql",
-        "NAME": "aquanq_events",
-        "USER": "root",
-        "PASSWORD": "abcd123",
-        "HOST": "127.0.0.1",
-        "PORT": "3306",
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'aquanq_events',
+        'USER': 'root',
+        'PASSWORD': '',
+        'HOST': '127.0.0.1',
+        'PORT': '3306',
     }
 }
 

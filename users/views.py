@@ -62,3 +62,31 @@ class UserRegistrationView(generics.CreateAPIView):
         Define los permisos para esta vista.
         """
         return [permissions.IsAuthenticated(), IsInGroup('Admin')]
+
+
+@extend_schema(
+    tags=['Usuarios'],
+    summary="Verificar si un usuario existe por DNI",
+    responses={
+        200: OpenApiResponse(description="El usuario existe."),
+        404: OpenApiResponse(description="El usuario no fue encontrado.")
+    }
+)
+class UserExistsView(generics.GenericAPIView):
+    """
+    Endpoint público para verificar si un usuario con un DNI específico
+    ya está registrado en el sistema.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request, *args, **kwargs):
+        dni = kwargs.get('dni')
+        if not dni:
+            return Response({"detail": "DNI no proporcionado."}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user_exists = User.objects.filter(username=dni).exists()
+
+        if user_exists:
+            return Response(status=status.HTTP_200_OK)
+        else:
+            return Response(status=status.HTTP_404_NOT_FOUND)
