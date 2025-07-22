@@ -5,32 +5,34 @@ from drf_spectacular.utils import extend_schema
 from .models import Notificacion, DeviceToken
 from .serializers import NotificacionSerializer, DeviceTokenSerializer
 from core.permissions import IsOwner
+from core.viewsets import AuditModelViewSet
 
 @extend_schema(tags=['Notificaciones'])
-class DeviceTokenViewSet(viewsets.ModelViewSet):
+class DeviceTokenViewSet(AuditModelViewSet):
     """
-    API endpoint para registrar y eliminar tokens de dispositivos (DeviceToken).
-    Un usuario solo puede ver y gestionar sus propios tokens.
+    Gestiona los tokens de dispositivo (DeviceTokens) para notificaciones push.
+
+    Permite a un usuario registrar su dispositivo, y ver o eliminar sus
+    propios tokens. No permite ver tokens de otros usuarios.
     """
     queryset = DeviceToken.objects.all()
     serializer_class = DeviceTokenSerializer
-    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        """
-        Esta vista solo debe devolver los tokens del usuario que hace la petición.
-        """
+        """Filtra los tokens para devolver solo los del usuario autenticado."""
         return self.queryset.filter(user=self.request.user)
 
     def perform_create(self, serializer):
         """
-        Asigna el usuario actual al crear un nuevo token.
-        Utiliza get_or_create para evitar tokens duplicados por usuario.
-        Esta lógica es personalizada y no usa AuditModelViewSet.
+        Registra un token para el usuario actual.
+
+        Si el token ya existe para el usuario, lo reactiva.
+        Si no existe, lo crea. Esto previene duplicados.
         """
         token = serializer.validated_data.get('token')
-        device_type = serializer.validated_data.get('device_type', 'android')
+        device_type = serializer.validated_data.get('device_type')
         
+        # Usar get_or_create para manejar tokens existentes.
         instance, created = DeviceToken.objects.get_or_create(
             user=self.request.user, 
             token=token,
@@ -41,42 +43,45 @@ class DeviceTokenViewSet(viewsets.ModelViewSet):
             }
         )
         
-        if not created:
-            instance.updated_by = self.request.user
+        # Si el token ya existía pero estaba inactivo, se reactiva.
+        if not created and not instance.is_active:
             instance.is_active = True
-            instance.save(update_fields=['updated_by', 'is_active'])
+            instance.updated_by = self.request.user
+            instance.save(update_fields=['is_active', 'updated_by'])
 
-        # Devolvemos el objeto a través del serializador para la respuesta
         serializer.instance = instance
 
     def get_permissions(self):
         """
-        - Cualquiera autenticado puede crear (registrar) su token.
-        - Solo el propietario puede ver, actualizar o eliminar su token.
+        Define permisos por acción:
+        - `create`, `list`: Cualquier usuario autenticado.
+        - `retrieve`, `update`, `destroy`: Solo el propietario del token.
         """
         if self.action in ['retrieve', 'update', 'partial_update', 'destroy']:
-            return [permissions.IsAuthenticated(), IsOwner()]
+            self.permission_classes = [permissions.IsAuthenticated, IsOwner]
+        else:
+            self.permission_classes = [permissions.IsAuthenticated]
         return super().get_permissions()
+
 
 @extend_schema(tags=['Notificaciones'])
 class NotificacionViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API endpoint para ver el historial de notificaciones.
-    Un usuario solo puede ver las notificaciones que le pertenecen
-    o las que son de tipo broadcast (sin destinatario).
+    Expone el historial de notificaciones para el usuario autenticado.
+    
+    Un usuario puede ver sus notificaciones directas y las de tipo 'broadcast'.
     """
     serializer_class = NotificacionSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         """
-        Filtra el queryset para devolver solo las notificaciones
-        relevantes para el usuario actual (las suyas y las de broadcast).
-        """
-        if getattr(self, 'swagger_fake_view', False):
-            return Notificacion.objects.none()
+        Filtra las notificaciones para el usuario actual.
 
+        Incluye notificaciones donde el usuario es el destinatario directo
+        o aquellas sin destinatario (broadcast).
+        """
         user = self.request.user
         return Notificacion.objects.filter(
-            models.Q(destinatario=user) | models.Q(destinatario=None)
+            models.Q(destinatario=user) | models.Q(destinatario__isnull=True)
         ).select_related('evento').order_by('-created_at')

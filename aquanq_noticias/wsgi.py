@@ -1,9 +1,11 @@
 """
-WSGI config for aquanq_noticias project.
+Configuración WSGI para el proyecto AquanQ Noticias.
 
-It exposes the WSGI callable as a module-level variable named ``application``.
+Este módulo contiene la configuración WSGI (Web Server Gateway Interface) que permite
+servir la aplicación Django a través de servidores web compatibles con WSGI como
+uWSGI o Gunicorn.
 
-For more information on this file, see
+Para más información sobre WSGI, ver:
 https://docs.djangoproject.com/en/5.2/howto/deployment/wsgi/
 """
 
@@ -13,4 +15,5 @@ from django.core.wsgi import get_wsgi_application
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'aquanq_noticias.settings')
 
+# Obtiene la aplicación WSGI para servir el proyecto
 application = get_wsgi_application()

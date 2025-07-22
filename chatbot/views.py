@@ -11,10 +11,11 @@ from .serializers import ChatbotKnowledgeBaseSerializer, QuestionSerializer, Ans
 from core.permissions import IsInGroup
 from functools import reduce
 import operator
+import uuid
 from drf_spectacular.utils import extend_schema
 from core.viewsets import AuditModelViewSet
 
-# Lista de palabras comunes en español a ignorar durante la búsqueda
+# Lista de palabras comunes en español a ignorar para no ensuciar la búsqueda.
 SPANISH_STOP_WORDS = [
     'de', 'la', 'el', 'en', 'y', 'a', 'los', 'del', 'las', 'un', 'por', 'con', 'no',
     'una', 'su', 'para', 'es', 'al', 'lo', 'como', 'más', 'o', 'pero', 'sus', 'le',
@@ -22,60 +23,37 @@ SPANISH_STOP_WORDS = [
     'también', 'hasta', 'desde', 'mi', 'qué', 'dónde', 'quién', 'cuál', 'cómo', 'cuándo'
 ]
 
-# Create your views here.
-
 @extend_schema(tags=['Chatbot'])
 class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
     """
-    API endpoint para la gestión de la base de conocimiento del Chatbot.
-    Accesible solo por el rol Admin.
+    Gestiona la base de conocimiento del chatbot (CRUD).
+    
+    Accesible solo por administradores para crear, leer, actualizar y eliminar
+    entradas de conocimiento.
     """
     queryset = ChatbotKnowledgeBase.objects.all().select_related('category', 'created_by', 'updated_by')
     serializer_class = ChatbotKnowledgeBaseSerializer
-    
-    def get_permissions(self):
-        """
-        Solo los usuarios en el grupo 'Admin' tienen acceso a este recurso.
-        """
-        return [permissions.IsAuthenticated(), IsInGroup('Admin')]
-
-    # Para este ViewSet, todas las acciones (GET, POST, PUT, DELETE)
-    # requieren los mismos permisos, por lo que no es necesario
-    # un método get_permissions() como en Eventos.
-
+    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
 
 @extend_schema(tags=['Chatbot'])
 class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
     """
-    API endpoint para ver el historial de conversaciones del chatbot.
-    Accesible solo para el rol 'Admin'.
-    Permite a los administradores revisar las preguntas de los usuarios
-    para mejorar la base de conocimiento.
+    Expone el historial de conversaciones del chatbot (solo lectura).
+
+    Permite a los administradores revisar las interacciones para mejorar la
+    efectividad del chatbot.
     """
-    queryset = ChatConversation.objects.all().select_related('user', 'matched_knowledge', 'created_by', 'updated_by')
+    queryset = ChatConversation.objects.all().select_related('user', 'matched_knowledge').order_by('-created_at')
     serializer_class = ChatConversationSerializer
     permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
-
-    def get_permissions(self):
-        """
-        Instancia y devuelve la lista de permisos que esta vista requiere.
-        Necesario porque IsInGroup se instancia con parámetros.
-        """
-        return [permission() if hasattr(permission, '__call__') else permission for permission in self.permission_classes]
-
-    def get_queryset(self):
-        """
-        Sobrescribe el queryset para optimizar las consultas y
-        asegurar que se incluyan los datos relacionados.
-        """
-        return super().get_queryset().order_by('-created_at')
-
 
 @extend_schema(tags=['Chatbot'])
 class ChatbotQueryView(APIView):
     """
-    Endpoint público para hacer preguntas al chatbot.
-    Recibe una pregunta y devuelve una respuesta de la base de conocimiento.
+    Endpoint público para interactuar con el chatbot.
+
+    Recibe una pregunta y devuelve la respuesta más relevante que encuentre
+    en la base de conocimiento.
     """
     permission_classes = [permissions.AllowAny]
 
@@ -84,70 +62,95 @@ class ChatbotQueryView(APIView):
         responses={200: AnswerSerializer}
     )
     def post(self, request, *args, **kwargs):
+        """
+        Procesa una pregunta del usuario y retorna una respuesta.
+
+        Args:
+            request: La petición HTTP, que debe contener 'question' y opcionalmente 'session_id'.
+        
+        Returns:
+            Response: Un objeto JSON con la 'answer' y el 'session_id' de la conversación.
+        """
         serializer = QuestionSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        question_text = serializer.validated_data['question'].strip().lower()
-        session_id = serializer.validated_data.get('session_id') # .get() para no fallar si no viene
-        
-        # Si no hay session_id, se crea uno para el seguimiento anónimo
-        if not session_id:
-            import uuid
-            session_id = str(uuid.uuid4())
+        validated_data = serializer.validated_data
+        question_text = validated_data['question'].strip().lower()
+        session_id = validated_data.get('session_id') or str(uuid.uuid4())
         
         answer_text = "Lo siento, no he podido encontrar una respuesta a tu pregunta. Por favor, intenta reformularla."
         matched_knowledge = None
 
-        # 1. Limpiar la pregunta, obtener términos y filtrar "stop words"
+        # 1. Limpiar y tokenizar la pregunta, excluyendo palabras comunes (stop words).
         raw_terms = ''.join(c for c in question_text if c.isalnum() or c.isspace()).split()
         search_terms = [term for term in raw_terms if term not in SPANISH_STOP_WORDS]
 
         if search_terms:
-            # 2. Encontrar candidatos iniciales en la base de datos
+            # 2. Construir una consulta para buscar términos en preguntas o palabras clave.
             query = reduce(operator.or_, (Q(question__icontains=term) | Q(keywords__icontains=term) for term in search_terms))
             candidate_entries = ChatbotKnowledgeBase.objects.filter(is_active=True).filter(query).distinct()
 
-            # 3. Calcular el score para cada candidato y encontrar el mejor
+            # 3. Puntuar cada candidato para encontrar la mejor coincidencia.
+            #    Se da más peso a las coincidencias en la pregunta que en las palabras clave.
             best_match = None
             highest_score = 0
 
             if candidate_entries.exists():
                 for entry in candidate_entries:
-                    current_score = 0
-                    entry_question_lower = entry.question.lower()
-                    entry_keywords_lower = entry.keywords.lower()
-
-                    for term in search_terms:
-                        if term in entry_question_lower:
-                            current_score += 3  # Mayor peso
-                        if term in entry_keywords_lower:
-                            current_score += 1  # Menor peso
-
-                    if current_score > highest_score:
-                        highest_score = current_score
+                    score = self._calculate_score(entry, search_terms)
+                    if score > highest_score:
+                        highest_score = score
                         best_match = entry
                 
                 if best_match:
                     answer_text = best_match.answer
                     matched_knowledge = best_match
 
-        # Registrar la conversación, incluyendo auditoría si el usuario está autenticado
+        # 4. Registrar la conversación para auditoría.
+        self._log_conversation(request, session_id, question_text, answer_text, matched_knowledge)
+
+        answer_serializer = AnswerSerializer({'answer': answer_text, 'session_id': session_id})
+        return Response(answer_serializer.data, status=status.HTTP_200_OK)
+
+    def _calculate_score(self, entry, search_terms):
+        """
+        Calcula una puntuación de relevancia para una entrada de conocimiento.
+        
+        Args:
+            entry (ChatbotKnowledgeBase): La entrada a puntuar.
+            search_terms (list): Lista de términos de búsqueda.
+        
+        Returns:
+            int: La puntuación calculada.
+        """
+        score = 0
+        entry_question = entry.question.lower()
+        entry_keywords = entry.keywords.lower()
+
+        for term in search_terms:
+            if term in entry_question:
+                score += 3  # Mayor peso para coincidencias en la pregunta.
+            if term in entry_keywords:
+                score += 1  # Menor peso para coincidencias en keywords.
+        return score
+
+    def _log_conversation(self, request, session_id, question, answer, matched_knowledge):
+        """
+        Guarda un registro de la interacción en la base de datos.
+        """
         user = request.user if request.user.is_authenticated else None
         
-        conversation_data = {
+        log_data = {
             'session_id': session_id,
-            'question_text': question_text,
-            'answer_text': answer_text,
+            'question_text': question,
+            'answer_text': answer,
             'matched_knowledge': matched_knowledge,
             'user': user
         }
 
         if user:
-            conversation_data['created_by'] = user
-            conversation_data['updated_by'] = user
+            log_data['created_by'] = user
+            log_data['updated_by'] = user
 
-        ChatConversation.objects.create(**conversation_data)
-
-        answer_serializer = AnswerSerializer({'answer': answer_text, 'session_id': session_id})
-        return Response(answer_serializer.data, status=status.HTTP_200_OK)
+        ChatConversation.objects.create(**log_data)

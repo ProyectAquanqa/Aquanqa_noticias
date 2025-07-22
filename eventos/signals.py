@@ -2,38 +2,37 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Evento
 from notificaciones.models import Notificacion
-from .services import send_push_notification
+from notificaciones.services import send_push_notification
 
 @receiver(post_save, sender=Evento)
-def crear_y_enviar_notificacion_al_publicar(sender, instance, created, **kwargs):
+def crear_y_enviar_notificacion_al_publicar(sender, instance, created, update_fields, **kwargs):
     """
-    Esta señal se dispara cada vez que se guarda un objeto Evento.
-    Si el evento se publica, crea un objeto Notificacion y dispara el envío.
+    Señal que se dispara al guardar un Evento.
+
+    Si el evento se marca como 'publicado' (ya sea al crearse o al actualizarse),
+    crea un registro de Notificacion y desencadena el envío de notificaciones push.
     """
-    def trigger_notification(evento):
-        # El usuario que actualizó el evento es el responsable de esta acción.
-        audit_user = evento.updated_by
-        notificacion = Notificacion.objects.create(
-            evento=evento,
-            created_by=audit_user,
-            updated_by=audit_user
-        )
-        print(f"Notificación creada para '{evento.titulo}' (ID: {notificacion.id}).")
-        
-        # TODO: Esta llamada debería ser asíncrona en producción usando Celery.
-        # Llamar a esto directamente en el flujo de la petición puede causar lentitud.
-        # Ejemplo con Celery: send_push_notification.delay(notificacion.id)
-        send_push_notification(notificacion.id)
+    # Determinar si el campo 'publicado' fue explícitamente parte de la actualización.
+    # Si `update_fields` es None, se asume que cualquier campo pudo haber cambiado.
+    publicado_field_updated = update_fields is None or 'publicado' in update_fields
 
-    # El campo 'update_fields' nos ayuda a saber si 'publicado' fue uno de los campos actualizados.
-    is_being_published = instance.publicado and (not kwargs.get('update_fields') or 'publicado' in kwargs['update_fields'])
-
-    if created and instance.publicado:
-        # Si el evento se crea como publicado desde el principio
-        trigger_notification(instance)
-    
-    elif not created and is_being_published:
-        # Si un evento existente se actualiza para ser publicado
-        # Comprobamos si ya existe una notif pendiente para evitar duplicados
+    # La condición se cumple si el evento está publicado Y es una creación nueva o se está actualizando el campo 'publicado'.
+    if instance.publicado and (created or publicado_field_updated):
+        # Evitar enviar notificaciones duplicadas para el mismo evento.
         if not Notificacion.objects.filter(evento=instance, estado__in=['pendiente', 'enviado']).exists():
-            trigger_notification(instance) 
+            trigger_notification(instance)
+
+def trigger_notification(evento):
+    """Crea el objeto Notificacion y llama al servicio de envío."""
+    # El usuario que actualizó por última vez el evento es el responsable.
+    audit_user = evento.updated_by
+    notificacion = Notificacion.objects.create(
+        evento=evento,
+        created_by=audit_user,
+        updated_by=audit_user
+    )
+    
+    # TODO: ¡Crítico en producción! Esta llamada debe ser asíncrona.
+    # Usar Celery u otro sistema de colas para no bloquear la petición HTTP.
+    # Ejemplo: send_push_notification.delay(notificacion.id)
+    send_push_notification(notificacion.id) 

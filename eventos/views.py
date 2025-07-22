@@ -17,11 +17,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 @extend_schema(tags=['Eventos'])
 class EventoViewSet(AuditModelViewSet):
     """
-    API endpoint que permite ver, crear, editar y eliminar Eventos.
-    Los permisos se basan en los roles: Admin, QA, Trabajador.
-    La auditoría de usuarios (quién creó/modificó) es automática.
+    Gestiona los eventos (CRUD) con permisos basados en roles.
+    
+    Hereda de `AuditModelViewSet` para registrar automáticamente qué usuario
+    crea o modifica un evento.
     """
-    queryset = Evento.objects.all().select_related('autor', 'categoria', 'valor', 'created_by', 'updated_by')
+    queryset = Evento.objects.select_related('autor', 'categoria', 'valor').all()
     serializer_class = EventoSerializer
     filterset_class = EventoFilter
     filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]
@@ -31,26 +32,25 @@ class EventoViewSet(AuditModelViewSet):
 
     def get_permissions(self):
         """
-        Asigna permisos basados en la acción.
-        - Escritura (CUD): solo Admin y QA.
-        - Lectura (GET): Admin, QA y Trabajador.
+        Asigna permisos basados en la acción solicitada.
+
+        - Escritura (create, update, destroy): Solo 'Admin' y 'QA'.
+        - Lectura (list, retrieve): 'Admin', 'QA' y 'Trabajador'.
         """
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
-            permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
-        else: # list, retrieve
-            permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA', 'Trabajador')]
-        return [permission for permission in permission_classes]
-
-    # El método perform_create se elimina para que se utilice
-    # la implementación de AuditModelViewSet, que ya se encarga de
-    # created_by y updated_by. El campo 'autor' se gestionará en el serializador.
+            self.permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+        else:
+            self.permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA', 'Trabajador')]
+        return super().get_permissions()
 
 @extend_schema(tags=['Eventos'])
 class EventoFeedView(generics.ListAPIView):
     """
-    Endpoint público para el feed de la app móvil.
-    Devuelve solo eventos publicados, ordenados por fecha descendente.
+    Endpoint público para el feed de eventos de la aplicación móvil.
+
+    Retorna una lista de eventos publicados, ordenados con los más recientes
+    y los fijados primero.
     """
-    queryset = Evento.objects.filter(publicado=True).order_by('-fecha')
+    queryset = Evento.objects.filter(publicado=True).order_by('-is_pinned', '-fecha')
     serializer_class = EventoSerializer
     permission_classes = [permissions.AllowAny]

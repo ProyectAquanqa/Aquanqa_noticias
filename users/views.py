@@ -10,52 +10,41 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 
 # Create your views here.
 
-@extend_schema(exclude=True)
+@extend_schema(tags=['Autenticación'])
 class DniTokenObtainPairView(TokenObtainPairView):
     """
-    Vista de login que acepta DNI y contraseña para devolver un token JWT.
+    Endpoint de login que acepta DNI y contraseña para obtener un token JWT.
     """
     serializer_class = DniTokenObtainPairSerializer
 
-@extend_schema(
-    tags=['Usuarios'],
-    summary="Ver o actualizar el perfil del usuario autenticado",
-    responses={200: ProfileSerializer}
-)
+@extend_schema(tags=['Usuarios'])
 class UserProfileView(generics.RetrieveUpdateAPIView):
     """
-    Permite a los usuarios autenticados ver y actualizar su perfil.
-    Aquí pueden subir o cambiar la imagen de su firma.
+    Permite a un usuario autenticado ver y actualizar su propio perfil.
     """
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_object(self):
-        """Devuelve el perfil del usuario que realiza la petición."""
+        """Devuelve el perfil asociado al usuario que realiza la petición."""
         return self.request.user.profile
 
     def perform_update(self, serializer):
-        """Asegura que el campo 'updated_by' se actualice al modificar el perfil."""
+        """Añade el usuario actual a `updated_by` al modificar el perfil."""
         serializer.save(updated_by=self.request.user)
 
-@extend_schema(
-    summary="Registrar un nuevo usuario (Admin)",
-    request=UserRegistrationSerializer,
-    responses={
-        201: OpenApiResponse(description="Usuario creado exitosamente", response=UserRegistrationSerializer),
-        400: OpenApiResponse(description="Datos inválidos (p.ej. DNI no encontrado, error de API externa, etc.)"),
-        403: OpenApiResponse(description="No tienes permiso para realizar esta acción (solo Admins).")
-    }
-)
+@extend_schema(tags=['Usuarios'])
 class UserRegistrationView(generics.CreateAPIView):
     """
-    Endpoint para registrar un nuevo usuario en el sistema.
-    Solo accesible por usuarios en el grupo 'Admin'.
-    Al proporcionar un DNI válido, los nombres y apellidos se autocompletan.
+    Endpoint para registrar nuevos usuarios, accesible solo por Administradores.
+
+    El `UserRegistrationSerializer` se encarga de la lógica de consultar
+    el servicio de DNI y autocompletar los datos del usuario.
     """
     queryset = User.objects.all()
     serializer_class = UserRegistrationSerializer
+
     
     def get_permissions(self):
         """
@@ -90,3 +79,5 @@ class UserExistsView(generics.GenericAPIView):
             return Response(status=status.HTTP_200_OK)
         else:
             return Response(status=status.HTTP_404_NOT_FOUND)
+=======
+    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
