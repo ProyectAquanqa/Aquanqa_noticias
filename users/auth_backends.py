@@ -3,14 +3,25 @@ from django.contrib.auth import get_user_model
 
 class DNIAuthBackend(ModelBackend):
     """
-    Backend de autenticación que permite a los usuarios iniciar sesión
-    utilizando su número de DNI en lugar de un nombre de usuario.
+    Backend de autenticación personalizado para iniciar sesión con DNI.
+    
+    Permite usar el DNI del usuario en el campo 'username' del formulario de
+    login para la autenticación, en lugar del nombre de usuario tradicional.
     """
     def authenticate(self, request, username=None, password=None, **kwargs):
+        """
+        Sobrescribe el método de autenticación para buscar por DNI.
+
+        Args:
+            username (str): El DNI del usuario.
+            password (str): La contraseña del usuario.
+        
+        Returns:
+            User or None: La instancia del usuario si la autenticación es exitosa.
+        """
         UserModel = get_user_model()
-        # Django pasa el primer campo del formulario de login como 'username'
-        # Aquí lo tratamos como si fuera el DNI.
         try:
+            # El campo 'username' del modelo User almacena el DNI.
             user = UserModel.objects.get(username=username)
         except UserModel.DoesNotExist:
             return None

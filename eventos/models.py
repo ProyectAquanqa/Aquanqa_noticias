@@ -5,8 +5,7 @@ from core.models import BaseModelWithAudit
 
 class Categoria(BaseModelWithAudit):
     """
-    Modelo para categorizar los eventos.
-    Ej: Publicaciones, Reconocimientos, Noticias, etc.
+    Categoría para clasificar los eventos (e.g., 'Noticias', 'Reconocimientos').
     """
     nombre = models.CharField(max_length=100, unique=True, db_index=True)
     descripcion = models.TextField(blank=True, null=True)
@@ -22,8 +21,9 @@ class Categoria(BaseModelWithAudit):
 
 class Valor(BaseModelWithAudit):
     """
-    Modelo para los valores de la empresa que se pueden reconocer.
-    Ej: Pasión, Visión de Futuro, etc.
+    Representa un valor de la empresa para los eventos de tipo 'Reconocimiento'.
+    
+    Permite asociar una insignia visual a cada valor.
     """
     nombre = models.CharField(max_length=100, unique=True, db_index=True)
     descripcion = models.TextField(blank=True, null=True)
@@ -44,14 +44,16 @@ class Valor(BaseModelWithAudit):
 
 
 class Evento(BaseModelWithAudit):
+    """
+    Modelo principal que representa un evento, noticia o reconocimiento.
+    """
     titulo = models.CharField(max_length=200)
     categoria = models.ForeignKey(
         Categoria,
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="eventos",
-        help_text="Categoría a la que pertenece el evento."
+        related_name="eventos"
     )
     valor = models.ForeignKey(
         Valor,
@@ -59,17 +61,19 @@ class Evento(BaseModelWithAudit):
         null=True,
         blank=True,
         related_name="reconocimientos",
-        help_text="Si este evento es un reconocimiento, asigna el valor correspondiente."
+        help_text="Asociar solo si el evento es un 'Reconocimiento'."
     )
     descripcion = models.TextField()
     fecha = models.DateTimeField(db_index=True)
-    imagen = models.ImageField(upload_to='eventos_imagenes/', blank=True, null=True, help_text="Imagen principal del evento.")
+    imagen = models.ImageField(upload_to='eventos_imagenes/', blank=True, null=True)
     publicado = models.BooleanField(default=False, db_index=True)
-    is_pinned = models.BooleanField(default=False, db_index=True, help_text="Marca esta opción para fijar el evento al inicio.")
+    is_pinned = models.BooleanField(default=False, db_index=True, help_text="Fija el evento al inicio del feed.")
     autor = models.ForeignKey(User, on_delete=models.PROTECT, related_name="eventos_creados")
 
     class Meta:
         ordering = ['-fecha']
+        verbose_name = "Evento"
+        verbose_name_plural = "Eventos"
 
     def __str__(self):
         return self.titulo

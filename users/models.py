@@ -5,19 +5,23 @@ from core.models import BaseModelWithAudit
 # Create your models here.
 
 class Profile(BaseModelWithAudit):
+    """
+    Extiende el modelo User de Django con campos adicionales.
+
+    Utiliza una relación `OneToOneField` para vincular cada perfil a un
+    único usuario del sistema.
+    """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     foto_perfil = models.ImageField(
         upload_to='fotos_perfil/',
         null=True,
-        blank=True,
-        help_text="Foto de perfil del usuario."
+        blank=True
     )
-    
     firma = models.ImageField(
         upload_to='firmas_usuarios/',
         null=True,
         blank=True,
-        help_text="Imagen de la firma del usuario (PNG/JPG)."
+        help_text="Firma digitalizada del usuario."
     )
 
     class Meta:

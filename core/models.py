@@ -5,9 +5,17 @@ from django.contrib.auth.models import User
 
 class BaseModelWithAudit(models.Model):
     """
-    Modelo base abstracto que añade campos de auditoría:
-    - Fechas de creación y actualización automáticas.
-    - Usuario que creó y que actualizó por última vez el registro.
+    Modelo base abstracto que añade campos de auditoría.
+
+    Incluye fechas de creación/actualización automáticas y seguimiento
+    del usuario que crea y modifica el registro. Debe ser heredado por otros
+    modelos de la aplicación para mantener un registro de auditoría consistente.
+    
+    Atributos:
+        created_at (DateTimeField): Fecha y hora de creación del registro.
+        updated_at (DateTimeField): Fecha y hora de la última actualización.
+        created_by (ForeignKey): Usuario que creó el registro.
+        updated_by (ForeignKey): Usuario que realizó la última modificación.
     """
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Fecha de creación")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Fecha de actualización")

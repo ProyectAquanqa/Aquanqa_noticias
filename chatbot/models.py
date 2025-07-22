@@ -3,6 +3,12 @@ from django.contrib.auth.models import User
 from core.models import BaseModelWithAudit
 
 class ChatbotCategory(BaseModelWithAudit):
+    """
+    Agrupa las entradas de la base de conocimiento del chatbot por temas.
+
+    Permite organizar las preguntas y respuestas, por ejemplo, en categorías
+    como "Facturación", "Soporte Técnico" o "Información General".
+    """
     name = models.CharField(max_length=100, unique=True, db_index=True)
     description = models.TextField(blank=True)
 
@@ -15,6 +21,12 @@ class ChatbotCategory(BaseModelWithAudit):
         return self.name
 
 class ChatbotKnowledgeBase(BaseModelWithAudit):
+    """
+    Representa una única entrada 'pregunta-respuesta' en la base de conocimiento.
+
+    Cada instancia es una unidad de información que el chatbot utiliza para
+    responder a las preguntas de los usuarios.
+    """
     category = models.ForeignKey(ChatbotCategory, on_delete=models.PROTECT, related_name="knowledge_entries")
     question = models.CharField(max_length=255, unique=True)
     answer = models.TextField()
@@ -30,8 +42,14 @@ class ChatbotKnowledgeBase(BaseModelWithAudit):
         return f"[{self.category.name}] {self.question[:60]}..."
 
 class ChatConversation(BaseModelWithAudit):
+    """
+    Almacena una única interacción (pregunta y respuesta) del chatbot.
+
+    Registra cada conversación para fines de auditoría, análisis y mejora
+    de la base de conocimiento.
+    """
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name="chat_conversations")
-    session_id = models.CharField(max_length=100, db_index=True, help_text="ID de sesión para agrupar interacciones de usuarios anónimos o logueados.")
+    session_id = models.CharField(max_length=100, db_index=True, help_text="ID para agrupar interacciones de una misma conversación.")
     question_text = models.TextField()
     answer_text = models.TextField()
     matched_knowledge = models.ForeignKey(ChatbotKnowledgeBase, on_delete=models.SET_NULL, null=True, blank=True, related_name="matched_conversations")
