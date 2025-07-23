@@ -1,32 +1,59 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import User, Profile
 from .serializers import UserRegistrationSerializer, ProfileSerializer, CustomTokenObtainPairSerializer
-from rest_framework.decorators import action, parser_classes
+from rest_framework.decorators import action
 from django.contrib.auth.hashers import make_password
+from drf_spectacular.utils import extend_schema, OpenApiRequest, OpenApiResponse
 
 # Vista personalizada para la obtención de tokens JWT
+@extend_schema(
+    tags=['Autenticación'],
+    summary="Iniciar Sesión (Obtener Token)",
+    description="Autentica a un usuario con su DNI y contraseña para obtener un par de tokens JWT (acceso y refresco)."
+)
 class CustomTokenObtainPairView(TokenObtainPairView):
     """
     Vista de obtención de token que utiliza un serializador personalizado para
     proporcionar mensajes de error de autenticación más claros y específicos.
-
-    Hereda de la vista estándar de Simple JWT pero la configura para usar
-    `CustomTokenObtainPairSerializer`.
     """
     serializer_class = CustomTokenObtainPairSerializer
 
+@extend_schema(
+    tags=['Autenticación'],
+    summary="Refrescar Token de Acceso",
+    description="Obtiene un nuevo token de acceso (access token) utilizando un token de refresco (refresh token) válido."
+)
+class CustomTokenRefreshView(TokenRefreshView):
+    """
+    Vista personalizada para refrescar el token que incluye la decoración
+    para la documentación de la API y así agruparla correctamente.
+    """
+    pass
+
 # ViewSet para manejar el registro y perfiles de usuarios
+@extend_schema(tags=['Usuarios'])
 class UserViewSet(viewsets.ViewSet):
     """
     Un ViewSet para manejar el registro de usuarios y la gestión de perfiles.
     """
-    permission_classes = [permissions.IsAuthenticated]
-    parser_classes = [MultiPartParser, FormParser]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
 
-    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def get_permissions(self):
+        """Asigna permisos basados en la acción."""
+        if self.action == 'register':
+            permission_classes = [permissions.AllowAny]
+        else:
+            permission_classes = [permissions.IsAuthenticated]
+        return [permission() for permission in permission_classes]
+
+    @extend_schema(
+        summary="Registrar Nuevo Usuario (Admin)",
+        description="Crea un nuevo usuario en el sistema a partir de su DNI. Los nombres se autocompletan desde un servicio externo. Requiere permisos de Administrador."
+    )
+    @action(detail=False, methods=['post'])
     def register(self, request):
         """
         Registra un nuevo usuario utilizando su DNI.
@@ -40,18 +67,25 @@ class UserViewSet(viewsets.ViewSet):
                 "message": "Usuario registrado exitosamente."
             }, status=status.HTTP_201_CREATED)
 
-    @action(detail=False, methods=['get', 'put'], 
-            permission_classes=[permissions.IsAuthenticated],
-            parser_classes=[MultiPartParser, FormParser])
+    @extend_schema(
+        methods=['GET'],
+        summary="Ver mi Perfil",
+        description="Obtiene los detalles del perfil del usuario actualmente autenticado."
+    )
+    @extend_schema(
+        methods=['PUT'],
+        summary="Actualizar mi Perfil",
+        description="Actualiza el perfil del usuario autenticado, permitiendo cambiar la foto de perfil y la firma."
+    )
+    @action(detail=False, methods=['get', 'put'])
     def profile(self, request):
         """
-        Permite a un usuario ver o actualizar su propio perfil.
-        Si el perfil no existe, lo crea automáticamente.
+        Permite a un usuario ver (GET) o actualizar (PUT) su propio perfil.
+        Si el perfil no existe al intentar acceder, se crea automáticamente.
         """
         try:
             profile = request.user.profile
         except Profile.DoesNotExist:
-            # Si el perfil no existe, lo creamos automáticamente
             profile = Profile.objects.create(
                 user=request.user,
                 created_by=request.user,
@@ -63,35 +97,20 @@ class UserViewSet(viewsets.ViewSet):
             return Response(serializer.data)
         
         elif request.method == 'PUT':
-            print(f"DEBUG - Datos recibidos: {request.data}")
-            print(f"DEBUG - Archivos recibidos: {request.FILES}")
-            
             serializer = ProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
             if serializer.is_valid(raise_exception=True):
-                # Manejar los archivos manualmente si es necesario
-                if 'foto_perfil' in request.FILES:
-                    profile.foto_perfil = request.FILES['foto_perfil']
-                    print(f"DEBUG - Foto de perfil actualizada: {profile.foto_perfil.name}")
-                if 'firma' in request.FILES:
-                    profile.firma = request.FILES['firma']
-                    print(f"DEBUG - Firma actualizada: {profile.firma.name}")
-                
-                # Guardar el perfil actualizado
                 profile.updated_by = request.user
                 profile.save()
-                
-                # Verificar los valores guardados
-                print(f"DEBUG - Perfil guardado: foto_perfil={profile.foto_perfil.url if profile.foto_perfil else None}, firma={profile.firma.url if profile.firma else None}")
-                
-                # Devolver la respuesta actualizada
                 serializer = ProfileSerializer(profile, context={'request': request})
-                print(f"DEBUG - Respuesta serializada: {serializer.data}")
                 return Response(serializer.data)
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    @action(detail=False, methods=['put'], 
-            permission_classes=[permissions.IsAuthenticated],
-            parser_classes=[JSONParser])
+    @extend_schema(
+        methods=['PUT'],
+        summary="Actualizar mis Credenciales",
+        description="Permite al usuario autenticado actualizar su correo electrónico y/o contraseña."
+    )
+    @action(detail=False, methods=['put'])
     def credentials(self, request):
         """
         Permite a un usuario actualizar su correo electrónico y/o contraseña.
@@ -100,26 +119,17 @@ class UserViewSet(viewsets.ViewSet):
         data = request.data
         changed = False
         
-        # Debug para verificar los datos recibidos
-        print(f"DEBUG - Datos para actualización de credenciales: {data}")
-        
-        # Actualizar email si se proporciona
         if 'email' in data and data['email']:
             user.email = data['email']
             changed = True
-            print(f"DEBUG - Email actualizado a: {user.email}")
         
-        # Actualizar contraseña si se proporciona
         if 'password' in data and data['password']:
             user.password = make_password(data['password'])
             changed = True
-            print(f"DEBUG - Contraseña actualizada")
         
-        # Guardar cambios si hubo alguno
         if changed:
             user.save()
             
-        # Devolver los datos del perfil
         profile = user.profile
         serializer = ProfileSerializer(profile, context={'request': request})
         return Response(serializer.data)

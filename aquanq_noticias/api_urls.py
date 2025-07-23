@@ -16,19 +16,18 @@ from rest_framework.routers import DefaultRouter
 from eventos.views import EventoViewSet, EventoFeedView
 from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
 from chatbot.views import (
-    ChatbotKnowledgeBaseViewSet, ChatbotQueryView, 
-    ChatConversationViewSet, RecommendedQuestionsView
+    ChatbotKnowledgeBaseViewSet, ChatbotQueryView, ChatConversationViewSet,
+    RecommendedQuestionsView
 )
-from users.views import UserViewSet, CustomTokenObtainPairView
-from rest_framework_simplejwt.views import TokenRefreshView
+from users.views import UserViewSet, CustomTokenObtainPairView, CustomTokenRefreshView
 
 # Configuración del router para ViewSets
 router = DefaultRouter()
-router.register(r'eventos', EventoViewSet, basename='evento')
-router.register(r'knowledgebase', ChatbotKnowledgeBaseViewSet, basename='knowledgebase')
-router.register(r'chat-history', ChatConversationViewSet, basename='chat-history')
+router.register(r'events', EventoViewSet, basename='evento')
+router.register(r'knowledge', ChatbotKnowledgeBaseViewSet, basename='knowledge')
+router.register(r'history', ChatConversationViewSet, basename='history')
 router.register(r'devices', DeviceTokenViewSet, basename='devicetoken')
-router.register(r'notificaciones', NotificacionViewSet, basename='notificacion')
+router.register(r'notifications', NotificacionViewSet, basename='notificacion')
 router.register(r'users', UserViewSet, basename='user')
 
 # Definición de patrones de URL
@@ -37,7 +36,7 @@ urlpatterns = [
     
     # Rutas de autenticación
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
     
     # Rutas del chatbot
     path('chatbot/', ChatbotQueryView.as_view(), name='chatbot-query'),

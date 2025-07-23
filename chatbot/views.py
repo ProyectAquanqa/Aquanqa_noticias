@@ -27,7 +27,7 @@ SPANISH_STOP_WORDS = [
     'también', 'hasta', 'desde', 'mi', 'qué', 'dónde', 'quién', 'cuál', 'cómo', 'cuándo'
 ]
 
-@extend_schema(tags=['Chatbot'])
+@extend_schema(tags=['Knowledge'])
 class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
     """
     Gestiona la base de conocimiento del chatbot (CRUD).
@@ -37,9 +37,42 @@ class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
     """
     queryset = ChatbotKnowledgeBase.objects.all().select_related('category', 'created_by', 'updated_by')
     serializer_class = ChatbotKnowledgeBaseSerializer
-    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
+    
+    def get_permissions(self):
+        """Devuelve una lista de instancias de los permisos requeridos."""
+        return [permissions.IsAuthenticated(), IsInGroup('Admin')]
 
-@extend_schema(tags=['Chatbot'])
+    @extend_schema(summary="Listar Base de Conocimiento (Admin)")
+    def list(self, request, *args, **kwargs):
+        """Obtiene una lista de todas las entradas de la base de conocimiento."""
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Crear Entrada de Conocimiento (Admin)")
+    def create(self, request, *args, **kwargs):
+        """Crea una nueva entrada de pregunta-respuesta en la base de conocimiento."""
+        return super().create(request, *args, **kwargs)
+
+    @extend_schema(summary="Obtener Entrada de Conocimiento (Admin)")
+    def retrieve(self, request, *args, **kwargs):
+        """Obtiene una entrada específica de la base de conocimiento por su ID."""
+        return super().retrieve(request, *args, **kwargs)
+
+    @extend_schema(summary="Actualizar Entrada de Conocimiento (Admin)")
+    def update(self, request, *args, **kwargs):
+        """Actualiza completamente una entrada de la base de conocimiento."""
+        return super().update(request, *args, **kwargs)
+
+    @extend_schema(summary="Actualización Parcial de Conocimiento (Admin)")
+    def partial_update(self, request, *args, **kwargs):
+        """Actualiza parcialmente una entrada de la base de conocimiento."""
+        return super().partial_update(request, *args, **kwargs)
+
+    @extend_schema(summary="Eliminar Entrada de Conocimiento (Admin)")
+    def destroy(self, request, *args, **kwargs):
+        """Elimina una entrada de la base de conocimiento."""
+        return super().destroy(request, *args, **kwargs)
+
+@extend_schema(tags=['Chat History'])
 class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     Expone el historial de conversaciones del chatbot (solo lectura).
@@ -49,9 +82,26 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = ChatConversation.objects.all().select_related('user', 'matched_knowledge').order_by('-created_at')
     serializer_class = ChatConversationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
 
-@extend_schema(tags=['Chatbot'])
+    def get_permissions(self):
+        """Devuelve una lista de instancias de los permisos requeridos."""
+        return [permissions.IsAuthenticated(), IsInGroup('Admin')]
+
+    @extend_schema(summary="Listar Historial de Conversaciones (Admin)")
+    def list(self, request, *args, **kwargs):
+        """Obtiene el historial completo de conversaciones del chatbot."""
+        return super().list(request, *args, **kwargs)
+
+    @extend_schema(summary="Obtener una Conversación (Admin)")
+    def retrieve(self, request, *args, **kwargs):
+        """Obtiene una conversación específica del historial por su ID."""
+        return super().retrieve(request, *args, **kwargs)
+
+@extend_schema(
+    tags=['Chatbot'],
+    summary="Consultar al Chatbot",
+    description="Envía una pregunta al chatbot y recibe la respuesta más relevante. Este endpoint es público."
+)
 class ChatbotQueryView(APIView):
     """
     Endpoint público para interactuar con el chatbot.
@@ -129,7 +179,11 @@ class ChatbotQueryView(APIView):
 
         ChatConversation.objects.create(**log_data)
 
-@extend_schema(tags=['Chatbot'])
+@extend_schema(
+    tags=['Chatbot'],
+    summary="Obtener Preguntas Recomendadas",
+    description="Devuelve una lista de preguntas frecuentes o recomendadas que el usuario puede hacer al chatbot."
+)
 class RecommendedQuestionsView(APIView):
     """
     Endpoint público que devuelve una lista de preguntas recomendadas.
