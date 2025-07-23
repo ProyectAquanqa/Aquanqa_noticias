@@ -32,6 +32,7 @@ class ChatbotKnowledgeBase(BaseModelWithAudit):
     answer = models.TextField()
     keywords = models.TextField(blank=True, help_text="Palabras clave separadas por comas para mejorar la búsqueda.")
     is_active = models.BooleanField(default=True, db_index=True)
+    is_recommended = models.BooleanField(default=False, db_index=True, help_text="Marcar para mostrar como una pregunta sugerida en el chat.")
 
     class Meta:
         verbose_name = "Entrada de Conocimiento"

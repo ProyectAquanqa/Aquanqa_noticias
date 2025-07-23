@@ -1,83 +1,125 @@
-from django.shortcuts import render
-from rest_framework import generics, permissions, status
+from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
-from django.contrib.auth.models import User
-from .serializers import UserRegistrationSerializer, ProfileSerializer, DniTokenObtainPairSerializer
-from .models import Profile
-from core.permissions import IsInGroup
-from drf_spectacular.utils import extend_schema, OpenApiRequest, OpenApiResponse
 from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from .models import User, Profile
+from .serializers import UserRegistrationSerializer, ProfileSerializer, CustomTokenObtainPairSerializer
+from rest_framework.decorators import action, parser_classes
+from django.contrib.auth.hashers import make_password
 
-# Create your views here.
+# Vista personalizada para la obtención de tokens JWT
+class CustomTokenObtainPairView(TokenObtainPairView):
+    """
+    Vista de obtención de token que utiliza un serializador personalizado para
+    proporcionar mensajes de error de autenticación más claros y específicos.
 
-@extend_schema(tags=['Autenticación'])
-class DniTokenObtainPairView(TokenObtainPairView):
+    Hereda de la vista estándar de Simple JWT pero la configura para usar
+    `CustomTokenObtainPairSerializer`.
     """
-    Endpoint de login que acepta DNI y contraseña para obtener un token JWT.
-    """
-    serializer_class = DniTokenObtainPairSerializer
+    serializer_class = CustomTokenObtainPairSerializer
 
-@extend_schema(tags=['Usuarios'])
-class UserProfileView(generics.RetrieveUpdateAPIView):
+# ViewSet para manejar el registro y perfiles de usuarios
+class UserViewSet(viewsets.ViewSet):
     """
-    Permite a un usuario autenticado ver y actualizar su propio perfil.
+    Un ViewSet para manejar el registro de usuarios y la gestión de perfiles.
     """
-    queryset = Profile.objects.all()
-    serializer_class = ProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
 
-    def get_object(self):
-        """Devuelve el perfil asociado al usuario que realiza la petición."""
-        return self.request.user.profile
-
-    def perform_update(self, serializer):
-        """Añade el usuario actual a `updated_by` al modificar el perfil."""
-        serializer.save(updated_by=self.request.user)
-
-@extend_schema(tags=['Usuarios'])
-class UserRegistrationView(generics.CreateAPIView):
-    """
-    Endpoint para registrar nuevos usuarios, accesible solo por Administradores.
-
-    El `UserRegistrationSerializer` se encarga de la lógica de consultar
-    el servicio de DNI y autocompletar los datos del usuario.
-    """
-    queryset = User.objects.all()
-    serializer_class = UserRegistrationSerializer
-
-    
-    def get_permissions(self):
+    @action(detail=False, methods=['post'], permission_classes=[permissions.AllowAny])
+    def register(self, request):
         """
-        Define los permisos para esta vista.
+        Registra un nuevo usuario utilizando su DNI.
         """
-        return [permissions.IsAuthenticated(), IsInGroup('Admin')]
+        serializer = UserRegistrationSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid(raise_exception=True):
+            user = serializer.save()
+            return Response({
+                "user_id": user.id,
+                "dni": user.username,
+                "message": "Usuario registrado exitosamente."
+            }, status=status.HTTP_201_CREATED)
 
-
-@extend_schema(
-    tags=['Usuarios'],
-    summary="Verificar si un usuario existe por DNI",
-    responses={
-        200: OpenApiResponse(description="El usuario existe."),
-        404: OpenApiResponse(description="El usuario no fue encontrado.")
-    }
-)
-class UserExistsView(generics.GenericAPIView):
-    """
-    Endpoint público para verificar si un usuario con un DNI específico
-    ya está registrado en el sistema.
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def get(self, request, *args, **kwargs):
-        dni = kwargs.get('dni')
-        if not dni:
-            return Response({"detail": "DNI no proporcionado."}, status=status.HTTP_400_BAD_REQUEST)
+    @action(detail=False, methods=['get', 'put'], 
+            permission_classes=[permissions.IsAuthenticated],
+            parser_classes=[MultiPartParser, FormParser])
+    def profile(self, request):
+        """
+        Permite a un usuario ver o actualizar su propio perfil.
+        Si el perfil no existe, lo crea automáticamente.
+        """
+        try:
+            profile = request.user.profile
+        except Profile.DoesNotExist:
+            # Si el perfil no existe, lo creamos automáticamente
+            profile = Profile.objects.create(
+                user=request.user,
+                created_by=request.user,
+                updated_by=request.user
+            )
         
-        user_exists = User.objects.filter(username=dni).exists()
+        if request.method == 'GET':
+            serializer = ProfileSerializer(profile, context={'request': request})
+            return Response(serializer.data)
+        
+        elif request.method == 'PUT':
+            print(f"DEBUG - Datos recibidos: {request.data}")
+            print(f"DEBUG - Archivos recibidos: {request.FILES}")
+            
+            serializer = ProfileSerializer(profile, data=request.data, partial=True, context={'request': request})
+            if serializer.is_valid(raise_exception=True):
+                # Manejar los archivos manualmente si es necesario
+                if 'foto_perfil' in request.FILES:
+                    profile.foto_perfil = request.FILES['foto_perfil']
+                    print(f"DEBUG - Foto de perfil actualizada: {profile.foto_perfil.name}")
+                if 'firma' in request.FILES:
+                    profile.firma = request.FILES['firma']
+                    print(f"DEBUG - Firma actualizada: {profile.firma.name}")
+                
+                # Guardar el perfil actualizado
+                profile.updated_by = request.user
+                profile.save()
+                
+                # Verificar los valores guardados
+                print(f"DEBUG - Perfil guardado: foto_perfil={profile.foto_perfil.url if profile.foto_perfil else None}, firma={profile.firma.url if profile.firma else None}")
+                
+                # Devolver la respuesta actualizada
+                serializer = ProfileSerializer(profile, context={'request': request})
+                print(f"DEBUG - Respuesta serializada: {serializer.data}")
+                return Response(serializer.data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        if user_exists:
-            return Response(status=status.HTTP_200_OK)
-        else:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-=======
-    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin')]
+    @action(detail=False, methods=['put'], 
+            permission_classes=[permissions.IsAuthenticated],
+            parser_classes=[JSONParser])
+    def credentials(self, request):
+        """
+        Permite a un usuario actualizar su correo electrónico y/o contraseña.
+        """
+        user = request.user
+        data = request.data
+        changed = False
+        
+        # Debug para verificar los datos recibidos
+        print(f"DEBUG - Datos para actualización de credenciales: {data}")
+        
+        # Actualizar email si se proporciona
+        if 'email' in data and data['email']:
+            user.email = data['email']
+            changed = True
+            print(f"DEBUG - Email actualizado a: {user.email}")
+        
+        # Actualizar contraseña si se proporciona
+        if 'password' in data and data['password']:
+            user.password = make_password(data['password'])
+            changed = True
+            print(f"DEBUG - Contraseña actualizada")
+        
+        # Guardar cambios si hubo alguno
+        if changed:
+            user.save()
+            
+        # Devolver los datos del perfil
+        profile = user.profile
+        serializer = ProfileSerializer(profile, context={'request': request})
+        return Response(serializer.data)

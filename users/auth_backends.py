@@ -9,15 +9,6 @@ class DNIAuthBackend(ModelBackend):
     login para la autenticación, en lugar del nombre de usuario tradicional.
     """
     def authenticate(self, request, username=None, password=None, **kwargs):
-<<<<<<< HEAD
-        # --- DEBUGGING START ---
-        print("\n--- DNIAuthBackend: Intentando autenticar ---")
-        print(f"Username (DNI) recibido: '{username}'")
-        # No imprimir la contraseña en producción, pero para debug es útil
-        print(f"Password recibida: '{password}'")
-        # --- DEBUGGING END ---
-        
-=======
         """
         Sobrescribe el método de autenticación para buscar por DNI.
 
@@ -28,7 +19,13 @@ class DNIAuthBackend(ModelBackend):
         Returns:
             User or None: La instancia del usuario si la autenticación es exitosa.
         """
->>>>>>> 87371616766338f53a1210baecafade64b190ff2
+        # --- DEBUGGING START ---
+        print("\n--- DNIAuthBackend: Intentando autenticar ---")
+        print(f"Username (DNI) recibido: '{username}'")
+        # No imprimir la contraseña en producción, pero para debug es útil
+        print(f"Password recibida: '{password}'")
+        # --- DEBUGGING END ---
+        
         UserModel = get_user_model()
         try:
             # El campo 'username' del modelo User almacena el DNI.

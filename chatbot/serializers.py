@@ -40,4 +40,10 @@ class QuestionSerializer(serializers.Serializer):
 class AnswerSerializer(serializers.Serializer):
     """Serializador para la respuesta de salida del chatbot."""
     answer = serializers.CharField()
-    session_id = serializers.CharField(max_length=100) 
+    session_id = serializers.CharField(max_length=100)
+
+class RecommendedQuestionSerializer(serializers.ModelSerializer):
+    """Serializador para devolver únicamente el texto de las preguntas recomendadas."""
+    class Meta:
+        model = ChatbotKnowledgeBase
+        fields = ['question'] 

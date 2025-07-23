@@ -7,13 +7,17 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import ChatbotKnowledgeBase, ChatConversation
-from .serializers import ChatbotKnowledgeBaseSerializer, QuestionSerializer, AnswerSerializer, ChatConversationSerializer
+from .serializers import (
+    ChatbotKnowledgeBaseSerializer, QuestionSerializer, 
+    AnswerSerializer, ChatConversationSerializer, RecommendedQuestionSerializer
+)
 from core.permissions import IsInGroup
 from functools import reduce
 import operator
 import uuid
 from drf_spectacular.utils import extend_schema
 from core.viewsets import AuditModelViewSet
+from thefuzz import process
 
 # Lista de palabras comunes en español a ignorar para no ensuciar la búsqueda.
 SPANISH_STOP_WORDS = [
@@ -53,7 +57,7 @@ class ChatbotQueryView(APIView):
     Endpoint público para interactuar con el chatbot.
 
     Recibe una pregunta y devuelve la respuesta más relevante que encuentre
-    en la base de conocimiento.
+    en la base de conocimiento utilizando búsqueda flexible (fuzzy matching).
     """
     permission_classes = [permissions.AllowAny]
 
@@ -64,12 +68,6 @@ class ChatbotQueryView(APIView):
     def post(self, request, *args, **kwargs):
         """
         Procesa una pregunta del usuario y retorna una respuesta.
-
-        Args:
-            request: La petición HTTP, que debe contener 'question' y opcionalmente 'session_id'.
-        
-        Returns:
-            Response: Un objeto JSON con la 'answer' y el 'session_id' de la conversación.
         """
         serializer = QuestionSerializer(data=request.data)
         if not serializer.is_valid():
@@ -82,58 +80,34 @@ class ChatbotQueryView(APIView):
         answer_text = "Lo siento, no he podido encontrar una respuesta a tu pregunta. Por favor, intenta reformularla."
         matched_knowledge = None
 
-        # 1. Limpiar y tokenizar la pregunta, excluyendo palabras comunes (stop words).
-        raw_terms = ''.join(c for c in question_text if c.isalnum() or c.isspace()).split()
-        search_terms = [term for term in raw_terms if term not in SPANISH_STOP_WORDS]
+        # 1. Obtener todas las preguntas activas de la base de conocimiento.
+        #    Se usa un diccionario para mapear el texto de la pregunta a su ID para una búsqueda eficiente.
+        active_questions = {
+            entry.question: entry.id 
+            for entry in ChatbotKnowledgeBase.objects.filter(is_active=True)
+        }
 
-        if search_terms:
-            # 2. Construir una consulta para buscar términos en preguntas o palabras clave.
-            query = reduce(operator.or_, (Q(question__icontains=term) | Q(keywords__icontains=term) for term in search_terms))
-            candidate_entries = ChatbotKnowledgeBase.objects.filter(is_active=True).filter(query).distinct()
+        if active_questions:
+            # 2. Utilizar thefuzz para encontrar la mejor coincidencia.
+            #    `extractOne` devuelve la mejor coincidencia que supera el `score_cutoff`.
+            #    El formato de la tupla es: (texto_pregunta, puntuacion, clave_del_diccionario)
+            #    En nuestro caso, la clave es la misma que el texto.
+            best_match = process.extractOne(question_text, active_questions.keys(), score_cutoff=80)
 
-            # 3. Puntuar cada candidato para encontrar la mejor coincidencia.
-            #    Se da más peso a las coincidencias en la pregunta que en las palabras clave.
-            best_match = None
-            highest_score = 0
-
-            if candidate_entries.exists():
-                for entry in candidate_entries:
-                    score = self._calculate_score(entry, search_terms)
-                    if score > highest_score:
-                        highest_score = score
-                        best_match = entry
+            if best_match:
+                # 3. Si se encuentra una coincidencia, obtener la entrada completa de la base de datos.
+                question_found = best_match[0]
+                knowledge_id = active_questions[question_found]
                 
-                if best_match:
-                    answer_text = best_match.answer
-                    matched_knowledge = best_match
+                best_entry = ChatbotKnowledgeBase.objects.get(id=knowledge_id)
+                answer_text = best_entry.answer
+                matched_knowledge = best_entry
 
         # 4. Registrar la conversación para auditoría.
         self._log_conversation(request, session_id, question_text, answer_text, matched_knowledge)
 
         answer_serializer = AnswerSerializer({'answer': answer_text, 'session_id': session_id})
         return Response(answer_serializer.data, status=status.HTTP_200_OK)
-
-    def _calculate_score(self, entry, search_terms):
-        """
-        Calcula una puntuación de relevancia para una entrada de conocimiento.
-        
-        Args:
-            entry (ChatbotKnowledgeBase): La entrada a puntuar.
-            search_terms (list): Lista de términos de búsqueda.
-        
-        Returns:
-            int: La puntuación calculada.
-        """
-        score = 0
-        entry_question = entry.question.lower()
-        entry_keywords = entry.keywords.lower()
-
-        for term in search_terms:
-            if term in entry_question:
-                score += 3  # Mayor peso para coincidencias en la pregunta.
-            if term in entry_keywords:
-                score += 1  # Menor peso para coincidencias en keywords.
-        return score
 
     def _log_conversation(self, request, session_id, question, answer, matched_knowledge):
         """
@@ -154,3 +128,28 @@ class ChatbotQueryView(APIView):
             log_data['updated_by'] = user
 
         ChatConversation.objects.create(**log_data)
+
+@extend_schema(tags=['Chatbot'])
+class RecommendedQuestionsView(APIView):
+    """
+    Endpoint público que devuelve una lista de preguntas recomendadas.
+
+    Estas son preguntas predefinidas que se pueden mostrar al usuario
+    para guiar la conversación.
+    """
+    permission_classes = [permissions.AllowAny]
+
+    @extend_schema(
+        responses={200: RecommendedQuestionSerializer(many=True)}
+    )
+    def get(self, request, *args, **kwargs):
+        """
+        Retorna las preguntas marcadas como 'recomendadas' en la base de conocimiento.
+        """
+        recommended_questions = ChatbotKnowledgeBase.objects.filter(
+            is_active=True, 
+            is_recommended=True
+        ).order_by('?')[:5]  # Devuelve hasta 5 preguntas aleatorias
+
+        serializer = RecommendedQuestionSerializer(recommended_questions, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)

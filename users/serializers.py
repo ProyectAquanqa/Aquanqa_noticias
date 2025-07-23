@@ -1,28 +1,103 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User, Group
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from rest_framework.exceptions import AuthenticationFailed
 from .services import consultar_dni, DniNotFoundError, DniApiNotAvailableError
 from .models import Profile
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-class DniTokenObtainPairSerializer(TokenObtainPairSerializer):
+User = get_user_model()
+
+class UserSerializerForToken(serializers.ModelSerializer):
     """
-    Serializador para el login que personaliza el campo 'username' a 'dni'.
+    Serializador ligero para incluir información básica del usuario en la respuesta del token.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Renombra el campo 'username' a 'dni' en la respuesta de la API
-        # para que sea más intuitivo para los clientes de la API.
-        self.fields[self.username_field] = serializers.CharField(write_only=True)
-        self.fields[self.username_field].label = 'dni'
+    class Meta:
+        model = User
+        fields = ('id', 'first_name', 'dni')
+        # Renombrar 'username' a 'dni' para que coincida con el modelo de Android.
+        extra_kwargs = {
+            'dni': {'source': 'username'}
+        }
+
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    Un serializador de token personalizado que:
+    1. Valida la existencia del usuario antes de autenticar.
+    2. Incluye datos básicos del usuario en la respuesta del token.
+    """
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Añadir datos personalizados al token si es necesario (opcional)
+        # token['first_name'] = user.first_name
+        return token
+
+    def validate(self, attrs):
+        # El flujo de validación se mantiene igual
+        data = super().validate(attrs)
+
+        # Añadir la información del usuario a la respuesta final
+        serializer = UserSerializerForToken(self.user)
+        data['user'] = serializer.data
+        
+        return data
 
 
 class ProfileSerializer(serializers.ModelSerializer):
-    """Serializador para ver y actualizar el perfil de un usuario."""
+    """
+    Serializador para ver y actualizar el perfil de un usuario.
+    Incluye información básica del usuario y su perfil.
+    """
+    # Campos del usuario
+    id = serializers.IntegerField(source='user.id', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    firstName = serializers.CharField(source='user.first_name', read_only=True)
+    lastName = serializers.CharField(source='user.last_name', read_only=True)
+    email = serializers.EmailField(source='user.email', read_only=True)
+    
+    # Obtener los grupos/roles del usuario
+    groups = serializers.SerializerMethodField()
+    
+    # Renombrar campos para coincidir con la app Android
+    fotoPerfil = serializers.ImageField(source='foto_perfil', required=False)
+    
+    # Campos adicionales
     created_by = serializers.StringRelatedField(read_only=True)
     updated_by = serializers.StringRelatedField(read_only=True)
+    
     class Meta:
         model = Profile
-        fields = ['foto_perfil', 'firma', 'created_by', 'updated_by']
+        fields = [
+            'id', 'username', 'firstName', 'lastName', 'email', 
+            'groups', 'fotoPerfil', 'firma', 'created_by', 'updated_by'
+        ]
+        extra_kwargs = {
+            'firma': {'required': False},
+        }
+    
+    def get_groups(self, obj):
+        """Devuelve la lista de grupos/roles a los que pertenece el usuario."""
+        return [group.name for group in obj.user.groups.all()]
+        
+    def to_representation(self, instance):
+        """
+        Personaliza la representación del perfil para incluir las URLs completas de los archivos.
+        """
+        ret = super().to_representation(instance)
+        
+        request = self.context.get('request')
+        
+        # Construir URLs absolutas para las imágenes si existen
+        if instance.foto_perfil and request is not None:
+            ret['fotoPerfil'] = request.build_absolute_uri(instance.foto_perfil.url) if instance.foto_perfil else None
+            
+        if instance.firma and request is not None:
+            ret['firma'] = request.build_absolute_uri(instance.firma.url) if instance.firma else None
+            
+        return ret
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
