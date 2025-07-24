@@ -2,7 +2,8 @@ from rest_framework import serializers
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework.exceptions import AuthenticationFailed
+from django.contrib.auth import authenticate
+from .exceptions import UserNotFound, InvalidPassword
 from .services import consultar_dni, DniNotFoundError, DniApiNotAvailableError
 from .models import Profile
 
@@ -24,22 +25,38 @@ class UserSerializerForToken(serializers.ModelSerializer):
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Un serializador de token personalizado que:
-    1. Valida la existencia del usuario antes de autenticar.
-    2. Incluye datos básicos del usuario en la respuesta del token.
+    1. Utiliza nuestro DNIAuthBackend para la autenticación.
+    2. Maneja las excepciones personalizadas para devolver mensajes de error claros.
+    3. Incluye datos básicos del usuario en la respuesta del token.
     """
 
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        # Añadir datos personalizados al token si es necesario (opcional)
-        # token['first_name'] = user.first_name
+        # Puedes añadir datos personalizados al token si es necesario
         return token
 
     def validate(self, attrs):
-        # El flujo de validación se mantiene igual
+        # Usamos nuestro backend de autenticación personalizado
+        # El campo 'username' que llega en `attrs` contiene el DNI
+        self.user = authenticate(
+            request=self.context.get('request'),
+            username=attrs.get('username'),
+            password=attrs.get('password')
+        )
+
+        # Si authenticate() lanza una excepción, DRF la manejará y devolverá
+        # la respuesta de error que definimos en la excepción.
+        # Si devuelve None sin lanzar excepción (no debería pasar con nuestro backend),
+        # lanzamos un error genérico.
+        if not self.user:
+            # Este caso es un fallback, ya que nuestro backend siempre debería lanzar una excepción
+            raise InvalidPassword('Credenciales inválidas, por favor verifique sus datos.')
+
+        # Si la autenticación es exitosa, generamos el token
         data = super().validate(attrs)
 
-        # Añadir la información del usuario a la respuesta final
+        # Añadimos la información del usuario a la respuesta final
         serializer = UserSerializerForToken(self.user)
         data['user'] = serializer.data
         

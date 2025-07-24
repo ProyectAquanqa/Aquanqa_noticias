@@ -1,28 +1,13 @@
 # Entornos virtuales
 venv/
 myvenv/
-.env/
+
 .venv/
 
-# Archivos de caché de Python
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Bases de datos locales
-*.sqlite3
-
-# Archivos del sistema operativo
-.DS_Store
-
+#
 # Archivos de configuración de IDEs
 .vscode/
 .idea/
-
-# Credenciales y secretos
-*.json
-!/aquanqa-notifications-firebase-adminsdk-fbsvc-1073c14b23.json
-.env
 
 # Archivos estáticos compilados (opcional)
 staticfiles/

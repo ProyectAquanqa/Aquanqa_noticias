@@ -25,14 +25,24 @@ class ChatbotKnowledgeBase(BaseModelWithAudit):
     Representa una única entrada 'pregunta-respuesta' en la base de conocimiento.
 
     Cada instancia es una unidad de información que el chatbot utiliza para
-    responder a las preguntas de los usuarios.
+    responder a las preguntas de los usuarios. Ahora también puede recomendar
+    otras preguntas para guiar la conversación.
     """
     category = models.ForeignKey(ChatbotCategory, on_delete=models.PROTECT, related_name="knowledge_entries")
     question = models.CharField(max_length=255, unique=True)
     answer = models.TextField()
     keywords = models.TextField(blank=True, help_text="Palabras clave separadas por comas para mejorar la búsqueda.")
     is_active = models.BooleanField(default=True, db_index=True)
-    is_recommended = models.BooleanField(default=False, db_index=True, help_text="Marcar para mostrar como una pregunta sugerida en el chat.")
+
+    # NUEVO: Campo para enlazar preguntas recomendadas.
+    # Permite que una respuesta sugiera proactivamente las siguientes preguntas.
+    recommended_questions = models.ManyToManyField(
+        'self',
+        symmetrical=False,
+        blank=True,
+        verbose_name="Preguntas Recomendadas",
+        help_text="Selecciona otras preguntas de la base de conocimiento para sugerir después de esta respuesta."
+    )
 
     class Meta:
         verbose_name = "Entrada de Conocimiento"
@@ -40,7 +50,7 @@ class ChatbotKnowledgeBase(BaseModelWithAudit):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return f"[{self.category.name}] {self.question[:60]}..."
+        return self.question
 
 class ChatConversation(BaseModelWithAudit):
     """

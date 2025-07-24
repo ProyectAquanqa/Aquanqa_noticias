@@ -23,7 +23,7 @@ from users.views import UserViewSet, CustomTokenObtainPairView, CustomTokenRefre
 
 # Configuración del router para ViewSets
 router = DefaultRouter()
-router.register(r'events', EventoViewSet, basename='evento')
+router.register(r'eventos', EventoViewSet, basename='evento')
 router.register(r'knowledge', ChatbotKnowledgeBaseViewSet, basename='knowledge')
 router.register(r'history', ChatConversationViewSet, basename='history')
 router.register(r'devices', DeviceTokenViewSet, basename='devicetoken')

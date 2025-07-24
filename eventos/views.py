@@ -3,8 +3,8 @@ from django.db import models
 from rest_framework import permissions, generics
 from rest_framework.response import Response
 
-from .models import Evento, Valor, Categoria
-from .serializers import EventoSerializer, CategoriaSerializer, ValorSerializer
+from .models import Evento, Categoria
+from .serializers import EventoSerializer, CategoriaSerializer
 from .filters import EventoFilter
 from core.permissions import IsInGroup
 from core.viewsets import AuditModelViewSet
@@ -22,7 +22,8 @@ class EventoViewSet(AuditModelViewSet):
     Hereda de `AuditModelViewSet` para registrar automáticamente qué usuario
     crea o modifica un evento.
     """
-    queryset = Evento.objects.select_related('autor', 'categoria', 'valor').all()
+    # Optimizamos la consulta para incluir el autor y su perfil relacionado
+    queryset = Evento.objects.select_related('autor__profile', 'categoria').all()
     serializer_class = EventoSerializer
     filterset_class = EventoFilter
     filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]

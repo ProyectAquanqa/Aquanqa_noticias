@@ -11,12 +11,21 @@ class ChatbotCategoryAdmin(AuditModelAdmin):
 
 @admin.register(ChatbotKnowledgeBase)
 class ChatbotKnowledgeBaseAdmin(AuditModelAdmin):
-    """Interfaz administrativa para la base de conocimiento del chatbot."""
+    """
+    Interfaz administrativa para la base de conocimiento del chatbot.
+    
+    Permite una gestión fácil de las preguntas recomendadas a través de
+    un widget de selección intuitivo (`filter_horizontal`).
+    """
     list_display = ('question', 'category', 'is_active', 'updated_at', 'updated_by')
     list_filter = ('is_active', 'category', 'updated_at')
     search_fields = ('question', 'answer', 'keywords')
-    autocomplete_fields = ['category']  # Mejora la selección de categorías
+    autocomplete_fields = ['category']
     readonly_fields = ('created_by', 'updated_by')
+    
+    # NUEVO: Facilita la selección de preguntas recomendadas en el admin.
+    # Este widget muestra dos cajas de selección para mover ítems fácilmente.
+    filter_horizontal = ('recommended_questions',)
 
 @admin.register(ChatConversation)
 class ChatConversationAdmin(admin.ModelAdmin):

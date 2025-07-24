@@ -1,5 +1,6 @@
 from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth import get_user_model
+from .exceptions import UserNotFound, InvalidPassword
 
 class DNIAuthBackend(ModelBackend):
     """
@@ -10,52 +11,29 @@ class DNIAuthBackend(ModelBackend):
     """
     def authenticate(self, request, username=None, password=None, **kwargs):
         """
-        Sobrescribe el método de autenticación para buscar por DNI.
-
-        Args:
-            username (str): El DNI del usuario.
-            password (str): La contraseña del usuario.
-        
-        Returns:
-            User or None: La instancia del usuario si la autenticación es exitosa.
+        Sobrescribe el método de autenticación para buscar por DNI y lanzar excepciones específicas.
         """
-        # --- DEBUGGING START ---
-        print("\n--- DNIAuthBackend: Intentando autenticar ---")
-        print(f"Username (DNI) recibido: '{username}'")
-        # No imprimir la contraseña en producción, pero para debug es útil
-        print(f"Password recibida: '{password}'")
-        # --- DEBUGGING END ---
-        
         UserModel = get_user_model()
         try:
             # El campo 'username' del modelo User almacena el DNI.
             user = UserModel.objects.get(username=username)
-            # --- DEBUGGING START ---
-            print(f"Usuario encontrado en DB: {user.username}")
-            # --- DEBUGGING END ---
         except UserModel.DoesNotExist:
-            # --- DEBUGGING START ---
-            print("Usuario NO encontrado en la base de datos.")
-            print("--- Fin de DNIAuthBackend ---\n")
-            # --- DEBUGGING END ---
-            return None
+            # Si el usuario no existe, lanzamos la excepción personalizada.
+            raise UserNotFound()
 
-        # --- DEBUGGING START ---
-        password_is_correct = user.check_password(password)
-        print(f"Resultado de user.check_password(): {password_is_correct}")
-        
-        user_is_active = getattr(user, "is_active", True)
-        print(f"Estado de user.is_active: {user_is_active}")
-        # --- DEBUGGING END ---
-        
-        if password_is_correct and user_is_active:
-            print("¡Éxito! Contraseña correcta y usuario activo. Devolviendo usuario.")
-            print("--- Fin de DNIAuthBackend ---\n")
-            return user
-            
-        print("Fallo de autenticación: contraseña incorrecta o usuario inactivo.")
-        print("--- Fin de DNIAuthBackend ---\n")
-        return None
+        # Verificamos la contraseña.
+        if not user.check_password(password):
+            # Si la contraseña es incorrecta, lanzamos la otra excepción.
+            raise InvalidPassword()
+
+        # Verificamos si el usuario está activo.
+        if not getattr(user, "is_active", True):
+            # Si está inactivo, también es un fallo de autenticación.
+            # Podemos usar la misma excepción que para la contraseña incorrecta.
+            raise InvalidPassword('El usuario está inactivo.')
+
+        # Si todo es correcto, devolvemos el usuario.
+        return user
 
     def get_user(self, user_id):
         UserModel = get_user_model()

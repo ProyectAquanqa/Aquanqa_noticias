@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Evento, Categoria, Valor
+from .models import Evento, Categoria
 from core.admin import AuditModelAdmin
 
 @admin.register(Evento)
@@ -11,12 +11,6 @@ class EventoAdmin(admin.ModelAdmin):
 
 @admin.register(Categoria)
 class CategoriaAdmin(AuditModelAdmin):
-    list_display = ('nombre', 'created_at', 'updated_at')
-    search_fields = ('nombre',)
-    readonly_fields = ('created_by', 'updated_by')
-
-@admin.register(Valor)
-class ValorAdmin(AuditModelAdmin):
     list_display = ('nombre', 'created_at', 'updated_at')
     search_fields = ('nombre',)
     readonly_fields = ('created_by', 'updated_by')
