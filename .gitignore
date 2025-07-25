@@ -8,6 +8,7 @@ myvenv/
 # Archivos de configuración de IDEs
 .vscode/
 .idea/
+firebase-credentials.json
 
 # Archivos estáticos compilados (opcional)
 staticfiles/
