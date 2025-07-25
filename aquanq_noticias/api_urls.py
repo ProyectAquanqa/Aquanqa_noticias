@@ -13,35 +13,40 @@ Todas las rutas definidas aquí están prefijadas con 'api/' en la configuració
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from eventos.views import EventoViewSet, EventoFeedView
-from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
-from chatbot.views import (
-    ChatbotKnowledgeBaseViewSet, ChatbotQueryView, ChatConversationViewSet,
-    RecommendedQuestionsView
-)
-from users.views import UserViewSet, CustomTokenObtainPairView, CustomTokenRefreshView
+from rest_framework_simplejwt.views import TokenRefreshView
 
-# Configuración del router para ViewSets
+from users.views import (
+    UserRegistrationView, 
+    UserProfileView,
+    CustomTokenObtainPairView
+)
+from eventos.views import EventoViewSet, CategoriaViewSet
+from chatbot.views import (
+    ChatbotQueryView, 
+    FrequentQuestionsView,
+    ChatbotKnowledgeBaseViewSet
+)
+from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
+
 router = DefaultRouter()
 router.register(r'eventos', EventoViewSet, basename='evento')
-router.register(r'knowledge', ChatbotKnowledgeBaseViewSet, basename='knowledge')
-router.register(r'history', ChatConversationViewSet, basename='history')
-router.register(r'devices', DeviceTokenViewSet, basename='devicetoken')
-router.register(r'notifications', NotificacionViewSet, basename='notificacion')
-router.register(r'users', UserViewSet, basename='user')
+router.register(r'categorias', CategoriaViewSet, basename='categoria')
+router.register(r'chatbot-knowledge', ChatbotKnowledgeBaseViewSet, basename='chatbot-knowledge')
+router.register(r'notifications', NotificacionViewSet, basename='notification')
+router.register(r'fcm-token', DeviceTokenViewSet, basename='fcm-token')
 
-# Definición de patrones de URL
+
 urlpatterns = [
     path('', include(router.urls)),
     
-    # Rutas de autenticación
+    # Rutas de Autenticación y Usuarios
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', CustomTokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('register/', UserRegistrationView.as_view(), name='user_register'),
+    path('profile/', UserProfileView.as_view(), name='user_profile'),
+
+    # Rutas de Chatbot
+    path('chatbot/query/', ChatbotQueryView.as_view(), name='chatbot_query'),
+    path('chatbot/frequent-questions/', FrequentQuestionsView.as_view(), name='frequent_questions'),
     
-    # Rutas del chatbot
-    path('chatbot/', ChatbotQueryView.as_view(), name='chatbot-query'),
-    path('chatbot/recommended-questions/', RecommendedQuestionsView.as_view(), name='chatbot-recommended-questions'),
-    
-    # Rutas de feed
-    path('feed/', EventoFeedView.as_view(), name='evento-feed'),
 ] 

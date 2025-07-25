@@ -70,3 +70,7 @@ whitenoise==6.7.0
 gunicorn==22.0.0
 thefuzz==0.22.1
 python-Levenshtein==0.25.1
+
+# Dependencias para Búsqueda Semántica
+sentence-transformers==2.7.0
+torch==2.3.0

@@ -29,11 +29,11 @@ class AutorSerializer(serializers.ModelSerializer):
     def get_foto_perfil(self, obj):
         """
         Devuelve la URL completa de la foto de perfil.
-        Maneja el caso en que el perfil o la foto no existan.
+        Accede directamente al campo 'foto_perfil' del objeto de usuario.
         """
         request = self.context.get('request')
-        if hasattr(obj, 'profile') and obj.profile.foto_perfil and request:
-            return request.build_absolute_uri(obj.profile.foto_perfil.url)
+        if obj.foto_perfil and hasattr(obj.foto_perfil, 'url') and request:
+            return request.build_absolute_uri(obj.foto_perfil.url)
         return None
 
 class EventoSerializer(serializers.ModelSerializer):

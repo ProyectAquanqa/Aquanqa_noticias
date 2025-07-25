@@ -22,8 +22,9 @@ class EventoViewSet(AuditModelViewSet):
     Hereda de `AuditModelViewSet` para registrar automáticamente qué usuario
     crea o modifica un evento.
     """
-    # Optimizamos la consulta para incluir el autor y su perfil relacionado
-    queryset = Evento.objects.select_related('autor__profile', 'categoria').all()
+    # Optimizamos la consulta para incluir el autor y la categoría.
+    # Ya no se necesita '__profile' porque los datos están en el modelo de autor.
+    queryset = Evento.objects.select_related('autor', 'categoria').all()
     serializer_class = EventoSerializer
     filterset_class = EventoFilter
     filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]
@@ -73,6 +74,19 @@ class EventoViewSet(AuditModelViewSet):
     def destroy(self, request, *args, **kwargs):
         """Elimina un evento existente. Requiere permisos de Admin o QA."""
         return super().destroy(request, *args, **kwargs)
+
+
+@extend_schema(tags=['Eventos'])
+class CategoriaViewSet(AuditModelViewSet):
+    """
+    Gestiona las categorías de eventos.
+    """
+    queryset = Categoria.objects.all()
+    serializer_class = CategoriaSerializer
+    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['nombre']
+    ordering = ['nombre']
 
 
 @extend_schema(

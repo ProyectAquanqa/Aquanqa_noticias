@@ -1,7 +1,35 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.conf import settings
 from core.models import BaseModelWithAudit
-from eventos.models import Evento
+
+
+class DeviceToken(BaseModelWithAudit):
+    """
+    Almacena un token de un dispositivo móvil (FCM) para notificaciones push.
+    
+    Cada token está asociado a un usuario y un tipo de dispositivo (iOS/Android).
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='device_tokens'
+    )
+    token = models.CharField(max_length=255, unique=True)
+    device_type = models.CharField(
+        max_length=10,
+        choices=[('android', 'Android'), ('ios', 'iOS')],
+        default='android'
+    )
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        verbose_name = "Token de Dispositivo"
+        verbose_name_plural = "Tokens de Dispositivos"
+        unique_together = ('user', 'token')
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Token para {self.user.username} en {self.device_type}"
 
 
 class Notificacion(BaseModelWithAudit):
@@ -11,19 +39,23 @@ class Notificacion(BaseModelWithAudit):
     Actúa como un historial de las comunicaciones push. Si `destinatario` es
     nulo, se considera una notificación de tipo 'broadcast' (para todos).
     """
-    ESTADOS = (
-        ('pendiente', 'Pendiente'),
-        ('enviado', 'Enviado'),
-        ('fallido', 'Fallido'),
-    )
-    evento = models.ForeignKey(Evento, on_delete=models.CASCADE, related_name="notificaciones")
     destinatario = models.ForeignKey(
-        User, on_delete=models.CASCADE, null=True, blank=True, 
-        related_name="notificaciones_recibidas",
-        help_text="Usuario específico a notificar. Nulo para notificaciones broadcast."
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notificaciones',
+        null=True,
+        blank=True
     )
-    estado = models.CharField(max_length=10, choices=ESTADOS, default='pendiente', db_index=True)
-    error_message = models.TextField(blank=True, null=True, help_text="Mensaje de error si el envío falla.")
+    titulo = models.CharField(max_length=255, default='') # Añadido default
+    mensaje = models.TextField(default='') # Añadido default para la migración
+    leido = models.BooleanField(default=False)
+    datos = models.JSONField(null=True, blank=True)
+    evento = models.ForeignKey(
+        'eventos.Evento',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True
+    )
 
     class Meta:
         verbose_name = "Notificación"
@@ -31,29 +63,6 @@ class Notificacion(BaseModelWithAudit):
         ordering = ['-created_at']
 
     def __str__(self):
-        dest = self.destinatario.username if self.destinatario else "Broadcast"
-        return f"Notificación de '{self.evento.titulo}' para {dest} ({self.estado})"
-
-
-class DeviceToken(BaseModelWithAudit):
-    """
-    Almacena un token de un dispositivo móvil (FCM) para notificaciones push.
-    
-    Cada token está asociado a un usuario y un tipo de dispositivo (iOS/Android).
-    """
-    DEVICE_CHOICES = (
-        ('android', 'Android'),
-        ('ios', 'iOS'),
-    )
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="device_tokens")
-    token = models.CharField(max_length=255, unique=True, help_text="Token de registro de Firebase Cloud Messaging.")
-    device_type = models.CharField(max_length=10, choices=DEVICE_CHOICES, default='android')
-    is_active = models.BooleanField(default=True, db_index=True, help_text="Indica si el token es válido para recibir notificaciones.")
-
-    class Meta:
-        verbose_name = "Token de Dispositivo"
-        verbose_name_plural = "Tokens de Dispositivos"
-        ordering = ['-created_at']
-
-    def __str__(self):
-        return f"Token de {self.user.username} ({self.get_device_type_display()})"
+        if self.destinatario:
+            return f"Notificación para {self.destinatario.username}: {self.titulo}"
+        return f"Notificación broadcast: {self.titulo}"

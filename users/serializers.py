@@ -1,185 +1,122 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.contrib.auth.models import Group
+from django.contrib.auth.hashers import make_password
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from django.contrib.auth import authenticate
-from .exceptions import UserNotFound, InvalidPassword
 from .services import consultar_dni, DniNotFoundError, DniApiNotAvailableError
-from .models import Profile
 
-User = get_user_model()
-
-class UserSerializerForToken(serializers.ModelSerializer):
-    """
-    Serializador ligero para incluir información básica del usuario en la respuesta del token.
-    """
-    class Meta:
-        model = User
-        fields = ('id', 'first_name', 'dni')
-        # Renombrar 'username' a 'dni' para que coincida con el modelo de Android.
-        extra_kwargs = {
-            'dni': {'source': 'username'}
-        }
+Usuario = get_user_model()
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
-    Un serializador de token personalizado que:
-    1. Utiliza nuestro DNIAuthBackend para la autenticación.
-    2. Maneja las excepciones personalizadas para devolver mensajes de error claros.
-    3. Incluye datos básicos del usuario en la respuesta del token.
+    Serializer de token personalizado para añadir datos del usuario a la respuesta.
     """
-
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        # Puedes añadir datos personalizados al token si es necesario
-        return token
-
     def validate(self, attrs):
-        # Usamos nuestro backend de autenticación personalizado
-        # El campo 'username' que llega en `attrs` contiene el DNI
-        self.user = authenticate(
-            request=self.context.get('request'),
-            username=attrs.get('username'),
-            password=attrs.get('password')
-        )
-
-        # Si authenticate() lanza una excepción, DRF la manejará y devolverá
-        # la respuesta de error que definimos en la excepción.
-        # Si devuelve None sin lanzar excepción (no debería pasar con nuestro backend),
-        # lanzamos un error genérico.
-        if not self.user:
-            # Este caso es un fallback, ya que nuestro backend siempre debería lanzar una excepción
-            raise InvalidPassword('Credenciales inválidas, por favor verifique sus datos.')
-
-        # Si la autenticación es exitosa, generamos el token
+        # La validación por defecto se encarga de la autenticación
         data = super().validate(attrs)
 
-        # Añadimos la información del usuario a la respuesta final
-        serializer = UserSerializerForToken(self.user)
-        data['user'] = serializer.data
+        # Añadir datos del usuario al diccionario de respuesta
+        serializer = UsuarioSerializer(self.user)
+        user_data = serializer.data
+        
+        # Renombramos claves para mantener compatibilidad con lo que la App Android espera
+        # en la respuesta del login.
+        data['user'] = {
+            "id": user_data.get('id'),
+            "first_name": user_data.get('first_name'),
+            "dni": user_data.get('username')
+        }
         
         return data
 
 
-class ProfileSerializer(serializers.ModelSerializer):
+class UsuarioSerializer(serializers.ModelSerializer):
     """
-    Serializador para ver y actualizar el perfil de un usuario.
-    Incluye información básica del usuario y su perfil.
+    Serializer para el modelo de Usuario personalizado.
     """
-    # Campos del usuario
-    id = serializers.IntegerField(source='user.id', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
-    firstName = serializers.CharField(source='user.first_name', read_only=True)
-    lastName = serializers.CharField(source='user.last_name', read_only=True)
-    email = serializers.EmailField(source='user.email', read_only=True)
-    
-    # Obtener los grupos/roles del usuario
-    groups = serializers.SerializerMethodField()
-    
-    # Renombrar campos para coincidir con la app Android
-    fotoPerfil = serializers.ImageField(source='foto_perfil', required=False)
-    
-    # Campos adicionales
-    created_by = serializers.StringRelatedField(read_only=True)
-    updated_by = serializers.StringRelatedField(read_only=True)
+    groups = serializers.SlugRelatedField(
+        many=True,
+        slug_field='name',
+        queryset=Group.objects.all()
+    )
     
     class Meta:
-        model = Profile
-        fields = [
-            'id', 'username', 'firstName', 'lastName', 'email', 
-            'groups', 'fotoPerfil', 'firma', 'created_by', 'updated_by'
-        ]
-        extra_kwargs = {
-            'firma': {'required': False},
-        }
-    
-    def get_groups(self, obj):
-        """Devuelve la lista de grupos/roles a los que pertenece el usuario."""
-        return [group.name for group in obj.user.groups.all()]
-        
-    def to_representation(self, instance):
-        """
-        Personaliza la representación del perfil para incluir las URLs completas de los archivos.
-        """
-        ret = super().to_representation(instance)
-        
-        request = self.context.get('request')
-        
-        # Construir URLs absolutas para las imágenes si existen
-        if instance.foto_perfil and request is not None:
-            ret['fotoPerfil'] = request.build_absolute_uri(instance.foto_perfil.url) if instance.foto_perfil else None
-            
-        if instance.firma and request is not None:
-            ret['firma'] = request.build_absolute_uri(instance.firma.url) if instance.firma else None
-            
-        return ret
+        model = Usuario
+        fields = (
+            'id', 'username', 'first_name', 'last_name', 'email', 
+            'foto_perfil', 'firma', 'groups', 'is_staff', 'is_active', 'date_joined'
+        )
+        read_only_fields = ('is_staff', 'is_active', 'date_joined')
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """
-    Serializador para registrar nuevos usuarios a partir de su DNI.
-    
-    Orquesta la validación del DNI, la consulta a un servicio externo para
-    obtener los datos del usuario, y la creación del `User` y `Profile`.
+    Serializer para el registro de nuevos usuarios a partir de su DNI.
+    Orquesta la consulta a un servicio externo para autocompletar los datos
+    y la creación del nuevo Usuario.
     """
-    dni = serializers.CharField(write_only=True, min_length=8, max_length=8)
+    dni = serializers.CharField(write_only=True, max_length=8, min_length=8)
 
     class Meta:
-        model = User
-        fields = ('id', 'password', 'dni')
+        model = Usuario
+        # El cliente solo necesita enviar 'dni' y 'password'.
+        fields = ('dni', 'password')
         extra_kwargs = {
-            'password': {'write_only': True}
+            'password': {'write_only': True, 'style': {'input_type': 'password'}},
         }
 
     def validate_dni(self, value):
-        """Valida que el DNI sea numérico y no esté ya registrado."""
+        """
+        Valida que el DNI sea numérico y no esté ya registrado en el sistema.
+        """
         if not value.isdigit():
             raise serializers.ValidationError("El DNI debe contener solo dígitos.")
-        if User.objects.filter(username=value).exists():
+        if Usuario.objects.filter(username=value).exists():
             raise serializers.ValidationError("Un usuario con este DNI ya existe.")
         return value
 
     def create(self, validated_data):
         """
-        Crea el usuario, su perfil y le asigna un rol por defecto.
-        
-        Pasos:
-        1. Consulta el DNI en el servicio externo.
-        2. Crea el objeto `User` con los datos obtenidos.
-        3. Crea el `Profile` asociado.
-        4. Asigna el grupo 'Trabajador' por defecto.
+        Crea el usuario, autocompletando sus datos desde el servicio de DNI.
         """
         dni = validated_data.pop('dni')
-        admin_user = self.context['request'].user
+        password = validated_data.pop('password')
         
         try:
+            # 1. Consultar el servicio externo de DNI
             datos_dni = consultar_dni(dni)
 
-            user = User.objects.create_user(
+            # El usuario que realiza la acción (si está disponible en el contexto)
+            request = self.context.get('request')
+            admin_user = request.user if request and request.user.is_authenticated else None
+
+            with transaction.atomic():
+                # 2. Crear el objeto Usuario con los datos autocompletados
+                user = Usuario.objects.create_user(
                 username=dni,
-                password=validated_data['password'],
+                    password=password,
                 first_name=datos_dni.get('nombres', '').strip(),
-                last_name=f"{datos_dni.get('apellido_paterno', '')} {datos_dni.get('apellido_materno', '')}".strip()
+                    last_name=f"{datos_dni.get('apellido_paterno', '')} {datos_dni.get('apellido_materno', '')}".strip(),
+                    created_by=admin_user,
+                    updated_by=admin_user
             )
             
-            Profile.objects.create(user=user, created_by=admin_user, updated_by=admin_user)
-
+                # 3. Asignar el grupo 'Trabajador' por defecto
             try:
                 trabajador_group = Group.objects.get(name='Trabajador')
                 user.groups.add(trabajador_group)
             except Group.DoesNotExist:
-                # Fallar de forma ruidosa si la configuración básica del sistema (grupos) no está presente.
-                raise serializers.ValidationError(
-                    "Error de configuración: El grupo 'Trabajador' no existe."
-                )
+                    # Si el grupo no existe, es un problema de configuración del sistema.
+                    # Se podría registrar un log o manejarlo de otra forma, pero por ahora
+                    # la creación del usuario no se interrumpe.
+                    pass
 
             return user
 
         except DniNotFoundError:
-            raise serializers.ValidationError({"dni": "DNI no encontrado o no autorizado."})
+            raise serializers.ValidationError({"dni": "El DNI consultado no fue encontrado o no es válido."})
         except DniApiNotAvailableError:
-            # Oculta los detalles del error interno al cliente de la API.
             raise serializers.ValidationError(
-                "El servicio de validación no está disponible. Intente más tarde."
+                "El servicio de validación de DNI no está disponible en este momento. Intente más tarde."
             ) 

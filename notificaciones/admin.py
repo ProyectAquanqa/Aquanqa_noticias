@@ -1,23 +1,18 @@
 from django.contrib import admin
-from .models import Notificacion, DeviceToken
-
-@admin.register(Notificacion)
-class NotificacionAdmin(admin.ModelAdmin):
-    
-    """Interfaz administrativa para supervisar el estado de las notificaciones."""
-
-    list_display = ('__str__', 'estado', 'created_at')
-    list_filter = ('estado',)
-    autocomplete_fields = ['evento', 'destinatario']
-    search_fields = ('evento__titulo', 'destinatario__username')
+from .models import DeviceToken, Notificacion
+from core.admin import AuditModelAdmin
+from core.viewsets import AuditModelViewSet
 
 @admin.register(DeviceToken)
-class DeviceTokenAdmin(admin.ModelAdmin):
-
-    """Interfaz administrativa para la gestión de tokens de dispositivos."""
-
+class DeviceTokenAdmin(AuditModelAdmin):
     list_display = ('user', 'device_type', 'is_active', 'created_at')
     list_filter = ('device_type', 'is_active')
     search_fields = ('user__username', 'token')
     autocomplete_fields = ['user']
-    readonly_fields = ('created_at', 'updated_at', 'created_by', 'updated_by')
+
+@admin.register(Notificacion)
+class NotificacionAdmin(AuditModelAdmin):
+    list_display = ('destinatario', 'titulo', 'leido', 'created_at')
+    list_filter = ('leido',)
+    search_fields = ('titulo', 'mensaje', 'destinatario__username')
+    autocomplete_fields = ['destinatario', 'evento']

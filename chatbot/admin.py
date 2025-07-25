@@ -1,49 +1,24 @@
 from django.contrib import admin
-from .models import ChatbotCategory, ChatbotKnowledgeBase, ChatConversation
+from .models import ChatbotKnowledgeBase, ChatbotCategory, ChatConversation
 from core.admin import AuditModelAdmin
 
 @admin.register(ChatbotCategory)
 class ChatbotCategoryAdmin(AuditModelAdmin):
-    """Interfaz administrativa para las categorías del chatbot."""
-    list_display = ('name', 'description', 'created_at', 'updated_at', 'created_by', 'updated_by')
-    search_fields = ('name', 'description')
-    readonly_fields = ('created_by', 'updated_by')
+    list_display = ('name', 'created_at', 'updated_at')
+    search_fields = ('name',)
 
 @admin.register(ChatbotKnowledgeBase)
 class ChatbotKnowledgeBaseAdmin(AuditModelAdmin):
-    """
-    Interfaz administrativa para la base de conocimiento del chatbot.
-    
-    Permite una gestión fácil de las preguntas recomendadas a través de
-    un widget de selección intuitivo (`filter_horizontal`).
-    """
-    list_display = ('question', 'category', 'is_active', 'updated_at', 'updated_by')
-    list_filter = ('is_active', 'category', 'updated_at')
+    list_display = ('question', 'category', 'view_count', 'is_active', 'created_at')
+    list_filter = ('category', 'is_active')
     search_fields = ('question', 'answer', 'keywords')
-    autocomplete_fields = ['category']
-    readonly_fields = ('created_by', 'updated_by')
-    
-    # NUEVO: Facilita la selección de preguntas recomendadas en el admin.
-    # Este widget muestra dos cajas de selección para mover ítems fácilmente.
+    autocomplete_fields = ['category', 'recommended_questions']
     filter_horizontal = ('recommended_questions',)
 
 @admin.register(ChatConversation)
-class ChatConversationAdmin(admin.ModelAdmin):
-    """
-    Interfaz de solo lectura para el historial de conversaciones del chatbot.
-
-    Permite a los administradores revisar las interacciones de los usuarios
-    sin permitir la modificación o creación de registros.
-    """
-    list_display = ('__str__', 'user', 'session_id', 'created_at')
-    list_filter = ('created_at', 'user')
-    search_fields = ('question_text', 'answer_text', 'user__username', 'session_id')
-    readonly_fields = ('user', 'session_id', 'question_text', 'answer_text', 'matched_knowledge', 'created_at', 'updated_at', 'created_by', 'updated_by')
-    
-    def has_change_permission(self, request, obj=None):
-        """Impide la modificación de historiales de chat desde el admin."""
-        return False
-
-    def has_add_permission(self, request):
-        """Impide la creación de nuevas conversaciones desde el admin."""
-        return False
+class ChatConversationAdmin(AuditModelAdmin):
+    list_display = ('__str__', 'user', 'matched_knowledge', 'created_at')
+    list_filter = ('user',)
+    search_fields = ('question_text', 'answer_text', 'user__username')
+    autocomplete_fields = ['user', 'matched_knowledge']
+    readonly_fields = ('session_id', 'question_text', 'answer_text', 'matched_knowledge', 'user', 'created_by', 'created_at', 'updated_by', 'updated_at')

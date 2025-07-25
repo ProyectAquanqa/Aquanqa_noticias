@@ -2,30 +2,38 @@
 
 from django.shortcuts import render
 from rest_framework import viewsets, permissions
-from django.db.models import Q
+from django.db.models import Q, F, Count
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from .models import ChatbotKnowledgeBase, ChatConversation
 from .serializers import (
-    ChatbotKnowledgeBaseSerializer, QuestionSerializer, 
-    AnswerSerializer, ChatConversationSerializer, RecommendedQuestionSerializer
+    ChatbotQuerySerializer,
+    ChatbotKnowledgeBaseSerializer,
+    RecommendedQuestionSerializer,
+    ChatConversationSerializer
 )
 from core.permissions import IsInGroup
-from functools import reduce
-import operator
-import uuid
-from drf_spectacular.utils import extend_schema
 from core.viewsets import AuditModelViewSet
-from thefuzz import process
+from sentence_transformers import SentenceTransformer, util
+import torch
+from rest_framework.permissions import AllowAny
+from drf_spectacular.utils import extend_schema
 
-# Lista de palabras comunes en español a ignorar para no ensuciar la búsqueda.
-SPANISH_STOP_WORDS = [
-    'de', 'la', 'el', 'en', 'y', 'a', 'los', 'del', 'las', 'un', 'por', 'con', 'no',
-    'una', 'su', 'para', 'es', 'al', 'lo', 'como', 'más', 'o', 'pero', 'sus', 'le',
-    'ha', 'me', 'si', 'sin', 'sobre', 'este', 'ya', 'entre', 'cuando', 'muy',
-    'también', 'hasta', 'desde', 'mi', 'qué', 'dónde', 'quién', 'cuál', 'cómo', 'cuándo'
-]
+# --- Carga del Modelo de IA ---
+# Se carga el modelo una sola vez cuando el servidor Django se inicia.
+# Esto es mucho más eficiente que cargarlo en cada petición.
+# Usamos el mismo modelo que en el comando de generación para asegurar consistencia.
+MODEL_NAME = 'hiiamsid/sentence_similarity_spanish_es'
+try:
+    # Determinar el dispositivo a usar (GPU si está disponible, si no CPU)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Chatbot: Cargando modelo '{MODEL_NAME}' en el dispositivo: {device}")
+    model = SentenceTransformer(MODEL_NAME, device=device)
+    print("Chatbot: Modelo cargado exitosamente.")
+except Exception as e:
+    print(f"Error crítico: No se pudo cargar el modelo de SentenceTransformer. {e}")
+    model = None
 
 @extend_schema(tags=['Knowledge'])
 class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
@@ -97,99 +105,132 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
         """Obtiene una conversación específica del historial por su ID."""
         return super().retrieve(request, *args, **kwargs)
 
-@extend_schema(
-    tags=['Chatbot'],
-    summary="Consultar al Chatbot",
-    description="Envía una pregunta al chatbot y recibe la respuesta más relevante. Este endpoint es público."
-)
 class ChatbotQueryView(APIView):
     """
-    Endpoint público para interactuar con el chatbot.
-
-    Recibe una pregunta y devuelve la respuesta más relevante que encuentre
-    en la base de conocimiento utilizando búsqueda flexible (fuzzy matching).
+    Gestiona las consultas del chatbot de los usuarios. Utiliza búsqueda por similitud
+    semántica para encontrar la respuesta más relevante en la base de conocimientos.
     """
-    permission_classes = [permissions.AllowAny]
+    permission_classes = [AllowAny]
+    # Umbral de similitud: Si la mejor coincidencia no supera este valor,
+    # se considera que no se encontró una respuesta adecuada.
+    # Se puede ajustar según la sensibilidad deseada.
+    # se puede bajar a 0.4 para asegurar que las coincidencias de palabras clave simples funcionen.
+    SIMILARITY_THRESHOLD = 0.6
 
-    @extend_schema(
-        request=QuestionSerializer,
-        responses={200: AnswerSerializer}
-    )
     def post(self, request, *args, **kwargs):
-        """
-        Procesa una pregunta del usuario y retorna una respuesta.
-        """
-        serializer = QuestionSerializer(data=request.data)
+        if not model:
+            return Response({
+                "error": "El servicio de Chatbot no está disponible temporalmente debido a un problema con el modelo de IA."
+            }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        serializer = ChatbotQuerySerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        validated_data = serializer.validated_data
-        question_text = validated_data['question'].strip().lower()
-        session_id = validated_data.get('session_id') or str(uuid.uuid4())
+        user_question = serializer.validated_data['question']
+
+        # 1. Obtener todos los conocimientos activos con embeddings pre-calculados.
+        #    Se excluyen los que no tienen un embedding para evitar errores.
+        knowledge_base = ChatbotKnowledgeBase.objects.filter(is_active=True, question_embedding__isnull=False)
+        if not knowledge_base.exists():
+            return self.default_response()
+
+        # 2. Preparar los datos para la comparación.
+        #    - db_questions: lista de los textos de las preguntas.
+        #    - db_embeddings: tensor de PyTorch con todos los embeddings de la DB.
+        db_questions = [item.question for item in knowledge_base]
+        db_embeddings = torch.tensor([item.question_embedding for item in knowledge_base], device=model.device)
+
+        # 3. Codificar la pregunta del usuario en un vector (embedding).
+        user_embedding = model.encode(user_question, convert_to_tensor=True, device=model.device)
+
+        # 4. Calcular la similitud del coseno entre la pregunta del usuario y TODAS las de la BD.
+        #    Esto es extremadamente rápido gracias a las operaciones vectoriales.
+        cosine_scores = util.cos_sim(user_embedding, db_embeddings)
+
+        # 5. Encontrar la puntuación más alta y su índice.
+        best_match_score, best_match_idx = torch.max(cosine_scores, dim=1)
+        best_match_score = best_match_score.item()
+        best_match_idx = best_match_idx.item()
         
-        answer_text = "Lo siento, no he podido encontrar una respuesta a tu pregunta. Por favor, intenta reformularla."
-        matched_knowledge = None
+        # --- LOGS DE DEPURACIÓN ---
+        print("-" * 30)
+        print(f"Pregunta del usuario: '{user_question}'")
+        print(f"Se comparó con {len(db_questions)} preguntas de la base de datos.")
+        print(f"Mejor coincidencia encontrada: '{db_questions[best_match_idx]}'")
+        print(f"Puntuación de similitud: {best_match_score:.4f}")
+        print(f"Umbral requerido: {self.SIMILARITY_THRESHOLD}")
+        print("-" * 30)
+        # --- FIN DE LOGS DE DEPURACIÓN ---
 
-        # 1. Obtener todas las preguntas activas de la base de conocimiento.
-        #    Se usa un diccionario para mapear el texto de la pregunta a su ID para una búsqueda eficiente.
-        active_questions = {
-            entry.question: entry.id 
-            for entry in ChatbotKnowledgeBase.objects.filter(is_active=True)
-        }
+        # 6. Evaluar si la mejor coincidencia es suficientemente buena.
+        if best_match_score >= self.SIMILARITY_THRESHOLD:
+            best_match = knowledge_base[best_match_idx]
+            # Incrementar el contador de vistas de la pregunta encontrada
+            best_match.view_count += 1
+            best_match.save(update_fields=['view_count'])
 
-        if active_questions:
-            # 2. Utilizar thefuzz para encontrar la mejor coincidencia.
-            #    `extractOne` devuelve la mejor coincidencia que supera el `score_cutoff`.
-            #    El formato de la tupla es: (texto_pregunta, puntuacion, clave_del_diccionario)
-            #    En nuestro caso, la clave es la misma que el texto.
-            best_match = process.extractOne(question_text, active_questions.keys(), score_cutoff=80)
+            # Serializar las preguntas recomendadas si existen
+            recommended = RecommendedQuestionSerializer(best_match.recommended_questions.all(), many=True).data
 
-            if best_match:
-                # 3. Si se encuentra una coincidencia, obtener la entrada completa de la base de datos.
-                question_found = best_match[0]
-                knowledge_id = active_questions[question_found]
-                
-                best_entry = ChatbotKnowledgeBase.objects.get(id=knowledge_id)
-                answer_text = best_entry.answer
-                matched_knowledge = best_entry
+            response_data = {
+                'answer': best_match.answer,
+                'match_question': best_match.question,
+                'score': best_match_score,
+                'recommended_questions': recommended
+            }
 
-        # 4. Registrar la conversación para auditoría.
-        self._log_conversation(request, session_id, question_text, answer_text, matched_knowledge)
+            self.log_conversation(request, user_question, best_match.answer, best_match)
 
-        answer_serializer = AnswerSerializer({'answer': answer_text, 'session_id': session_id})
-        return Response(answer_serializer.data, status=status.HTTP_200_OK)
+            return Response(response_data, status=status.HTTP_200_OK)
+        else:
+            # Si no se encuentra una coincidencia clara, dar una respuesta por defecto
+            # y sugerir las preguntas más frecuentes.
+            response = self.default_response()
+            self.log_conversation(request, user_question, response.data['answer'], None)
+            return response
 
-    def _log_conversation(self, request, session_id, question, answer, matched_knowledge):
+    def default_response(self):
         """
-        Guarda un registro de la interacción en la base de datos.
+        Retorna una respuesta estándar y las preguntas más frecuentes cuando
+        no se encuentra una coincidencia adecuada.
+        """
+        # Obtener las 4 preguntas más vistas para usarlas como sugerencias generales
+        frequent_questions = ChatbotKnowledgeBase.objects.filter(is_active=True).order_by('-view_count')[:4]
+        suggestions = RecommendedQuestionSerializer(frequent_questions, many=True).data
+
+        return Response({
+            'answer': 'Lo siento, no he podido encontrar una respuesta a tu pregunta. Quizás una de estas te ayude:',
+            'match_question': None,
+            'score': 0,
+            'recommended_questions': suggestions
+        }, status=status.HTTP_200_OK)
+
+    def log_conversation(self, request, question_text, answer_text, matched_knowledge):
+        """
+        Guarda un registro de la interacción en el historial de conversaciones.
         """
         user = request.user if request.user.is_authenticated else None
+        session_id = request.session.session_key or 'anonymous'
         
-        log_data = {
-            'session_id': session_id,
-            'question_text': question,
-            'answer_text': answer,
-            'matched_knowledge': matched_knowledge,
-            'user': user
-        }
-
-        if user:
-            log_data['created_by'] = user
-            log_data['updated_by'] = user
-
-        ChatConversation.objects.create(**log_data)
+        ChatConversation.objects.create(
+            session_id=session_id,
+            user=user,
+            question_text=question_text,
+            answer_text=answer_text,
+            matched_knowledge=matched_knowledge
+        )
 
 @extend_schema(
     tags=['Chatbot'],
-    summary="Obtener Preguntas Recomendadas",
-    description="Devuelve una lista de preguntas frecuentes o recomendadas que el usuario puede hacer al chatbot."
+    summary="Obtener Preguntas Frecuentes",
+    description="Devuelve una lista de las 5 preguntas más populares para mostrar al iniciar el chat."
 )
-class RecommendedQuestionsView(APIView):
+class FrequentQuestionsView(APIView):
     """
-    Endpoint público que devuelve una lista de preguntas recomendadas.
+    Endpoint público que devuelve una lista de las preguntas más frecuentes.
 
-    Estas son preguntas predefinidas que se pueden mostrar al usuario
-    para guiar la conversación.
+    Se basa en un contador de vistas para determinar la popularidad.
     """
     permission_classes = [permissions.AllowAny]
 
@@ -198,12 +239,8 @@ class RecommendedQuestionsView(APIView):
     )
     def get(self, request, *args, **kwargs):
         """
-        Retorna las preguntas marcadas como 'recomendadas' en la base de conocimiento.
+        Retorna las 5 preguntas más vistas de la base de conocimiento.
         """
-        recommended_questions = ChatbotKnowledgeBase.objects.filter(
-            is_active=True, 
-            is_recommended=True
-        ).order_by('?')[:5]  # Devuelve hasta 5 preguntas aleatorias
-
-        serializer = RecommendedQuestionSerializer(recommended_questions, many=True)
+        frequent_questions = ChatbotKnowledgeBase.objects.filter(is_active=True).order_by('-view_count')[:5]
+        serializer = RecommendedQuestionSerializer(frequent_questions, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)

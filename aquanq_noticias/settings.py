@@ -29,6 +29,10 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 
 
+# Application definition
+
+AUTH_USER_MODEL = 'users.Usuario'
+
 INSTALLED_APPS = [
     # Core de Django
     'django.contrib.admin',

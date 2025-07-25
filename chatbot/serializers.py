@@ -1,63 +1,45 @@
 from rest_framework import serializers
-from .models import ChatbotCategory, ChatbotKnowledgeBase, ChatConversation
+from .models import ChatbotKnowledgeBase, ChatConversation
 
-class ChatbotCategorySerializer(serializers.ModelSerializer):
-    """Serializador para el modelo ChatbotCategory."""
-    class Meta:
-        model = ChatbotCategory
-        fields = ['id', 'name', 'description']
-
-# NUEVO: Serializador simplificado para las preguntas recomendadas.
-# Solo necesitamos el ID (para futuras acciones) y el texto de la pregunta.
+class ChatbotQuerySerializer(serializers.Serializer):
+    """
+    Serializador para validar la pregunta entrante del usuario.
+    """
+    question = serializers.CharField(max_length=500)
+    
 class RecommendedQuestionSerializer(serializers.ModelSerializer):
-    """Serializador para mostrar preguntas recomendadas de forma anidada."""
+    """
+    Serializador simplificado para las preguntas recomendadas.
+    """
     class Meta:
         model = ChatbotKnowledgeBase
         fields = ['id', 'question']
 
 class ChatbotKnowledgeBaseSerializer(serializers.ModelSerializer):
     """
-    Serializador para la base de conocimiento del chatbot.
-    
-    Ahora incluye una lista anidada de preguntas recomendadas para guiar
-    al usuario en la conversación.
+    Serializador completo para la gestión de la base de conocimiento en el admin.
     """
-    # Anidamos el serializador de preguntas recomendadas.
+    category_name = serializers.CharField(source='category.name', read_only=True)
     recommended_questions = RecommendedQuestionSerializer(many=True, read_only=True)
-    created_by = serializers.StringRelatedField(read_only=True)
-    updated_by = serializers.StringRelatedField(read_only=True)
-    
+
     class Meta:
         model = ChatbotKnowledgeBase
-        fields = [
-            'id', 'question', 'answer', 'category', 'is_active',
-            'recommended_questions',  # Campo anidado
-            'created_at', 'updated_at', 'created_by', 'updated_by'
-        ]
+        fields = (
+            'id', 'question', 'answer', 'category', 'category_name',
+            'keywords', 'view_count', 'is_active', 'recommended_questions'
+        )
+        read_only_fields = ('view_count',)
 
 class ChatConversationSerializer(serializers.ModelSerializer):
-    """Serializador para el historial de conversaciones."""
-    user = serializers.StringRelatedField()
-    # Expone la pregunta del conocimiento coincidente para mayor contexto.
-    matched_knowledge_question = serializers.CharField(source='matched_knowledge.question', read_only=True)
-    created_by = serializers.StringRelatedField(read_only=True)
-    updated_by = serializers.StringRelatedField(read_only=True)
+    """
+    Serializador para mostrar el historial de conversaciones.
+    """
+    user_username = serializers.CharField(source='user.username', read_only=True, allow_null=True)
+    matched_question = serializers.CharField(source='matched_knowledge.question', read_only=True, allow_null=True)
 
     class Meta:
         model = ChatConversation
-        fields = [
-            'id', 'session_id', 'user', 'question_text', 'answer_text',
-            'matched_knowledge', 'matched_knowledge_question',
-            'created_at', 'created_by', 'updated_by'
-        ]
-        read_only_fields = ['created_at', 'created_by', 'updated_by']
-
-class QuestionSerializer(serializers.Serializer):
-    """Serializador para validar la pregunta de entrada del usuario."""
-    question = serializers.CharField(max_length=500)
-    session_id = serializers.CharField(max_length=100, required=False, allow_blank=True)
-
-class AnswerSerializer(serializers.Serializer):
-    """Serializador para la respuesta de salida del chatbot."""
-    answer = serializers.CharField()
-    session_id = serializers.CharField(max_length=100) 
+        fields = (
+            'id', 'session_id', 'user_username', 'question_text',
+            'answer_text', 'matched_knowledge', 'matched_question', 'created_at'
+        ) 
