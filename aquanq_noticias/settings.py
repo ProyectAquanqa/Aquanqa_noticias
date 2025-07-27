@@ -56,6 +56,9 @@ INSTALLED_APPS = [
     'django_filters',
 ]
 
+# Configuración del modelo de usuario personalizado
+AUTH_USER_MODEL = 'users.Usuario'
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

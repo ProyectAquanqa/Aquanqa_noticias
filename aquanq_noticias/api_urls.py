@@ -23,8 +23,9 @@ from users.views import (
 from eventos.views import EventoViewSet, CategoriaViewSet
 from chatbot.views import (
     ChatbotQueryView, 
-    FrequentQuestionsView,
-    ChatbotKnowledgeBaseViewSet
+    ChatbotRecommendedQuestionsView,
+    ChatbotKnowledgeBaseViewSet,
+    ChatConversationViewSet
 )
 from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
 
@@ -32,6 +33,7 @@ router = DefaultRouter()
 router.register(r'eventos', EventoViewSet, basename='evento')
 router.register(r'categorias', CategoriaViewSet, basename='categoria')
 router.register(r'chatbot-knowledge', ChatbotKnowledgeBaseViewSet, basename='chatbot-knowledge')
+router.register(r'chatbot-conversations', ChatConversationViewSet, basename='chatbot-conversations')
 router.register(r'notifications', NotificacionViewSet, basename='notification')
 router.register(r'fcm-token', DeviceTokenViewSet, basename='fcm-token')
 
@@ -45,8 +47,8 @@ urlpatterns = [
     path('register/', UserRegistrationView.as_view(), name='user_register'),
     path('profile/', UserProfileView.as_view(), name='user_profile'),
 
-    # Rutas de Chatbot
+    # Rutas de Chatbot Corporativo
     path('chatbot/query/', ChatbotQueryView.as_view(), name='chatbot_query'),
-    path('chatbot/frequent-questions/', FrequentQuestionsView.as_view(), name='frequent_questions'),
+    path('chatbot/recommended-questions/', ChatbotRecommendedQuestionsView.as_view(), name='recommended_questions'),
     
 ] 

@@ -1,0 +1,37 @@
+[
+  {
+    "category": "Horarios y Ubicación",
+    "question": "¿Cuál es el horario de atención?",
+    "answer": "Nuestro horario de atención es de lunes a viernes de 9:00 a 18:00.",
+    "keywords": "horario, atención, horas, abrir, cerrar",
+    "is_active": true
+  },
+  {
+    "category": "Horarios y Ubicación",
+    "question": "¿Dónde están ubicados?",
+    "answer": "Nos encontramos en la Calle Falsa 123, en el centro de la ciudad.",
+    "keywords": "dirección, mapa, llegar, ubicación, donde",
+    "is_active": true
+  },
+  {
+    "category": "Soporte Técnico",
+    "question": "No puedo iniciar sesión",
+    "answer": "Si tienes problemas para iniciar sesión, asegúrate de que estás usando el correo electrónico y la contraseña correctos. Puedes usar la opción 'Olvidé mi contraseña' para restablecerla.",
+    "keywords": "login, acceso, contraseña, entrar, sesión",
+    "is_active": true
+  },
+  {
+    "category": "Soporte Técnico",
+    "question": "¿Cómo puedo contactar a soporte?",
+    "answer": "Puedes contactar a nuestro equipo de soporte a través del correo electrónico soporte@aquanq.com o llamando al 555-1234.",
+    "keywords": "ayuda, soporte, contacto, teléfono, email",
+    "is_active": true
+  },
+    {
+    "category": "General",
+    "question": "¿Qué es AquanQ?",
+    "answer": "AquanQ es una plataforma para la gestión de eventos y notificaciones, diseñada para mantenerte siempre informado.",
+    "keywords": "aquanq, que es, proposito, aplicacion",
+    "is_active": false
+  }
+] 
