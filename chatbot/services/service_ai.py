@@ -18,7 +18,7 @@ from ..models import ChatbotKnowledgeBase, ChatConversation
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = 'hiiamsid/sentence_similarity_spanish_es'
-SIMILARITY_THRESHOLD = 0.6
+SIMILARITY_THRESHOLD = 0.3
 CACHE_TIMEOUT = 3600
 CACHE_PREFIX = 'chatbot'
 

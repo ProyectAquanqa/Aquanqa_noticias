@@ -12,3 +12,11 @@ firebase-credentials.json
 
 # Archivos estáticos compilados (opcional)
 staticfiles/
+
+# __pycache__ y archivos compilados de Python
+__pycache__/
+*.pyc
+
+# archivos del sistema
+.DS_Store
+Thumbs.db

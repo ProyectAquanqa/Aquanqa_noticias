@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.db import models
 from rest_framework import permissions, generics
 from rest_framework.response import Response
+from rest_framework.pagination import PageNumberPagination
 
 from .models import Evento, Categoria
 from .serializers import EventoSerializer, CategoriaSerializer
@@ -37,12 +38,12 @@ class EventoViewSet(AuditModelViewSet):
         Asigna permisos basados en la acción solicitada.
 
         - Escritura (create, update, destroy): Solo 'Admin' y 'QA'.
-        - Lectura (list, retrieve): 'Admin', 'QA' y 'Trabajador'.
+        - Lectura (list, retrieve): Cualquier usuario autenticado.
         """
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
         else:
-            permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA', 'Trabajador')]
+            permission_classes = [permissions.IsAuthenticated]  # Solo requiere autenticación para lectura
         return [permission() if isinstance(permission, type) else permission for permission in permission_classes]
 
     @extend_schema(summary="Listar Eventos")
@@ -80,27 +81,38 @@ class EventoViewSet(AuditModelViewSet):
 class CategoriaViewSet(AuditModelViewSet):
     """
     Gestiona las categorías de eventos.
+    Accesible para todos los usuarios autenticados.
     """
     queryset = Categoria.objects.all()
     serializer_class = CategoriaSerializer
-    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+    permission_classes = [permissions.IsAuthenticated]  # Solo requiere estar autenticado
     filter_backends = [filters.SearchFilter]
     search_fields = ['nombre']
     ordering = ['nombre']
 
 
+class EventoPagination(PageNumberPagination):
+    """
+    Paginación personalizada para el feed de eventos.
+    """
+    page_size = 10  # Eventos por página
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
 @extend_schema(
     tags=['Eventos'],
-    summary="Obtener el Feed de Eventos Públicos",
-    description="Obtiene una lista de todos los eventos publicados, ordenados con los más recientes y fijados primero. Este endpoint es público y no requiere autenticación."
+    summary="Obtener el Feed de Eventos Públicos con Paginación",
+    description="Obtiene una lista paginada de todos los eventos publicados, ordenados con los más recientes y fijados primero. Este endpoint es público y no requiere autenticación. Soporta infinite scroll."
 )
 class EventoFeedView(generics.ListAPIView):
     """
-    Endpoint público para el feed de eventos de la aplicación móvil.
+    Endpoint público para el feed de eventos de la aplicación móvil con paginación.
 
-    Retorna una lista de eventos publicados, ordenados con los más recientes
-    y los fijados primero.
+    Retorna una lista paginada de eventos publicados, ordenados con los más recientes
+    y los fijados primero. Perfecto para implementar infinite scroll.
     """
-    queryset = Evento.objects.filter(publicado=True).order_by('-is_pinned', '-fecha')
+    queryset = Evento.objects.filter(publicado=True).select_related('autor', 'categoria').order_by('-is_pinned', '-fecha')
     serializer_class = EventoSerializer
     permission_classes = [permissions.AllowAny]
+    pagination_class = EventoPagination

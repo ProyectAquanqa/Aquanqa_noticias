@@ -19,7 +19,7 @@ def crear_y_enviar_notificacion_al_publicar(sender, instance, created, update_fi
     # La condición se cumple si el evento está publicado Y es una creación nueva o se está actualizando el campo 'publicado'.
     if instance.publicado and (created or publicado_field_updated):
         # Evitar enviar notificaciones duplicadas para el mismo evento.
-        if not Notificacion.objects.filter(evento=instance, estado__in=['pendiente', 'enviado']).exists():
+        if not Notificacion.objects.filter(evento=instance, leido=True).exists():
             trigger_notification(instance)
 
 def trigger_notification(evento):

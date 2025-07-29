@@ -20,7 +20,7 @@ from users.views import (
     UserProfileView,
     CustomTokenObtainPairView
 )
-from eventos.views import EventoViewSet, CategoriaViewSet
+from eventos.views import EventoViewSet, CategoriaViewSet, EventoFeedView
 from chatbot.views import (
     ChatbotQueryView, 
     ChatbotRecommendedQuestionsView,
@@ -40,6 +40,9 @@ router.register(r'fcm-token', DeviceTokenViewSet, basename='fcm-token')
 
 urlpatterns = [
     path('', include(router.urls)),
+    
+    # Rutas de Eventos
+    path('feed/eventos/', EventoFeedView.as_view(), name='evento_feed'),
     
     # Rutas de Autenticación y Usuarios
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
