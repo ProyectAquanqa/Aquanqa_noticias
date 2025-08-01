@@ -35,6 +35,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 class UsuarioSerializer(serializers.ModelSerializer):
     """
     Serializer para el modelo de Usuario personalizado.
+    Incluye campos calculados para la interfaz de administración.
     """
     groups = serializers.SlugRelatedField(
         many=True,
@@ -42,13 +43,82 @@ class UsuarioSerializer(serializers.ModelSerializer):
         queryset=Group.objects.all()
     )
     
+    # Campos calculados para el frontend
+    full_name = serializers.SerializerMethodField()
+    groups_count = serializers.SerializerMethodField()
+    last_login_formatted = serializers.SerializerMethodField()
+    date_joined_formatted = serializers.SerializerMethodField()
+    
     class Meta:
         model = Usuario
         fields = (
-            'id', 'username', 'first_name', 'last_name', 'email', 
-            'foto_perfil', 'firma', 'groups', 'is_staff', 'is_active', 'date_joined'
+            'id', 'username', 'first_name', 'last_name', 'email', 'password',
+            'foto_perfil', 'firma', 'groups', 'is_staff', 'is_active', 
+            'date_joined', 'last_login', 'created_at', 'updated_at',
+            'created_by', 'updated_by',
+            # Campos calculados
+            'full_name', 'groups_count', 'last_login_formatted', 'date_joined_formatted'
         )
-        read_only_fields = ('is_staff', 'is_active', 'date_joined')
+        read_only_fields = ('date_joined', 'last_login', 'created_at', 'updated_at', 'created_by', 'updated_by')
+        extra_kwargs = {
+            'password': {'write_only': True, 'style': {'input_type': 'password'}},
+        }
+    
+    def get_full_name(self, obj):
+        """Retorna el nombre completo del usuario."""
+        return f"{obj.first_name} {obj.last_name}".strip() or obj.username
+    
+    def get_groups_count(self, obj):
+        """Retorna el número de grupos del usuario."""
+        return obj.groups.count()
+    
+    def get_last_login_formatted(self, obj):
+        """Retorna la fecha de último login formateada."""
+        if obj.last_login:
+            return obj.last_login.strftime('%d/%m/%Y %H:%M')
+        return 'Nunca'
+    
+    def get_date_joined_formatted(self, obj):
+        """Retorna la fecha de registro formateada."""
+        return obj.date_joined.strftime('%d/%m/%Y %H:%M')
+    
+    def create(self, validated_data):
+        """
+        Creación personalizada para manejar contraseñas y grupos.
+        """
+        groups_data = validated_data.pop('groups', None)
+        password = validated_data.pop('password', None)
+        
+        # Crear usuario
+        user = Usuario.objects.create_user(**validated_data)
+        
+        # Establecer contraseña si se proporciona
+        if password:
+            user.set_password(password)
+            user.save()
+        
+        # Asignar grupos si se proporcionan
+        if groups_data:
+            user.groups.set(groups_data)
+        
+        return user
+    
+    def update(self, instance, validated_data):
+        """
+        Actualización personalizada para manejar grupos y validaciones.
+        """
+        groups_data = validated_data.pop('groups', None)
+        
+        # Actualizar campos básicos
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        # Actualizar grupos si se proporcionan
+        if groups_data is not None:
+            instance.groups.set(groups_data)
+        
+        instance.save()
+        return instance
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """

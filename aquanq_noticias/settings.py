@@ -149,6 +149,8 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
+    # Permitir que los ViewSets manejen manualmente formatos como CSV
+    'URL_FORMAT_OVERRIDE': None,  # Desactivar el formato automático por URL
 }
 
 # Configuración de JWT (JSON Web Token)
@@ -183,3 +185,5 @@ DNI_API_BEARER_TOKEN = env('DNI_API_BEARER_TOKEN')
 # Firebase Cloud Messaging (FCM) para notificaciones push.
 # La inicialización se realiza en notificaciones/apps.py
 FIREBASE_ADMIN_CREDENTIALS_PATH = env('FIREBASE_ADMIN_CREDENTIALS_PATH', default=str(BASE_DIR / 'firebase-credentials.json'))
+
+

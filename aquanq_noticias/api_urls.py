@@ -18,14 +18,16 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from users.views import (
     UserRegistrationView, 
     UserProfileView,
-    CustomTokenObtainPairView
+    CustomTokenObtainPairView,
+    UsuarioViewSet
 )
 from eventos.views import EventoViewSet, CategoriaViewSet, EventoFeedView
 from chatbot.views import (
     ChatbotQueryView, 
     ChatbotRecommendedQuestionsView,
     ChatbotKnowledgeBaseViewSet,
-    ChatConversationViewSet
+    ChatConversationViewSet,
+    ChatbotCategoryViewSet
 )
 from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
 
@@ -34,6 +36,8 @@ router.register(r'eventos', EventoViewSet, basename='evento')
 router.register(r'categorias', CategoriaViewSet, basename='categoria')
 router.register(r'chatbot-knowledge', ChatbotKnowledgeBaseViewSet, basename='chatbot-knowledge')
 router.register(r'chatbot-conversations', ChatConversationViewSet, basename='chatbot-conversations')
+router.register(r'chatbot-categories', ChatbotCategoryViewSet, basename='chatbot-categories')
+router.register(r'users', UsuarioViewSet, basename='users')
 router.register(r'notifications', NotificacionViewSet, basename='notification')
 router.register(r'fcm-token', DeviceTokenViewSet, basename='fcm-token')
 
@@ -53,5 +57,6 @@ urlpatterns = [
     # Rutas de Chatbot Corporativo
     path('chatbot/query/', ChatbotQueryView.as_view(), name='chatbot_query'),
     path('chatbot/recommended-questions/', ChatbotRecommendedQuestionsView.as_view(), name='recommended_questions'),
+    path('chatbot/regenerate-embeddings/', ChatbotKnowledgeBaseViewSet.as_view({'post': 'regenerate_embeddings'}), name='regenerate_embeddings'),
     
 ] 

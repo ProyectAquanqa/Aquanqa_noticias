@@ -18,7 +18,8 @@ from ..models import ChatbotKnowledgeBase, ChatConversation
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = 'hiiamsid/sentence_similarity_spanish_es'
-SIMILARITY_THRESHOLD = 0.3
+SIMILARITY_THRESHOLD = 0.5  #  permite más coincidencias
+KEYWORD_MINIMUM_SCORE = 0.2  # Score mínimo para búsqueda por keywords
 CACHE_TIMEOUT = 3600
 CACHE_PREFIX = 'chatbot'
 
@@ -82,6 +83,97 @@ def _get_cached_response(question: str) -> Optional[Dict]:
 def _set_cached_response(question: str, response: Dict) -> None:
     cache_key = _generate_cache_key(question)
     cache.set(cache_key, response, CACHE_TIMEOUT)
+
+
+def _buscar_por_keywords(pregunta: str) -> Tuple[Optional[ChatbotKnowledgeBase], float]:
+    """
+    Busca coincidencias usando palabras clave en preguntas, respuestas y keywords.
+    """
+    import re
+    from django.db.models import Q
+    
+    # Normalizar la pregunta del usuario
+    pregunta_limpia = re.sub(r'[¿?¡!.,;:]', '', pregunta.lower()).strip()
+    palabras_usuario = set(pregunta_limpia.split())
+    
+    # Filtrar palabras muy cortas o comunes
+    palabras_filtradas = {p for p in palabras_usuario if len(p) > 2 and p not in ['que', 'como', 'donde', 'cuando', 'por', 'para', 'con', 'sin', 'del', 'las', 'los', 'una', 'uno', 'esta', 'este', 'son', 'hay', 'muy', 'mas', 'pero']}
+    
+    if not palabras_filtradas:
+        return None, 0.0
+    
+    # Buscar en la base de conocimiento activa
+    knowledge_items = ChatbotKnowledgeBase.objects.filter(is_active=True)
+    
+    mejor_match = None
+    mejor_score = 0.0
+    
+    for item in knowledge_items:
+        score = 0.0
+        total_palabras = len(palabras_filtradas)
+        
+        # Buscar en la pregunta
+        pregunta_item = re.sub(r'[¿?¡!.,;:]', '', item.question.lower())
+        palabras_pregunta = set(pregunta_item.split())
+        coincidencias_pregunta = palabras_filtradas.intersection(palabras_pregunta)
+        score += len(coincidencias_pregunta) * 0.4  # 40% por coincidencias en pregunta
+        
+        # Buscar en keywords específicas
+        if item.keywords:
+            keywords_item = set(item.keywords.lower().replace(',', ' ').split())
+            coincidencias_keywords = palabras_filtradas.intersection(keywords_item)
+            score += len(coincidencias_keywords) * 0.5  # 50% por coincidencias en keywords
+        
+        # Buscar en la respuesta (menor peso)
+        respuesta_item = re.sub(r'[¿?¡!.,;:]', '', item.answer.lower())
+        palabras_respuesta = set(respuesta_item.split())
+        coincidencias_respuesta = palabras_filtradas.intersection(palabras_respuesta)
+        score += len(coincidencias_respuesta) * 0.1  # 10% por coincidencias en respuesta
+        
+        # Normalizar score por el total de palabras
+        score_normalizado = score / total_palabras if total_palabras > 0 else 0
+        
+        if score_normalizado > mejor_score:
+            mejor_score = score_normalizado
+            mejor_match = item
+    
+    return mejor_match, mejor_score
+
+
+def _buscar_fuzzy(pregunta: str) -> Tuple[Optional[ChatbotKnowledgeBase], float]:
+    """
+    Búsqueda fuzzy para manejar errores de tipeo y variaciones.
+    """
+    from difflib import SequenceMatcher
+    
+    # Normalizar pregunta
+    pregunta_normalizada = pregunta.lower().strip()
+    
+    knowledge_items = ChatbotKnowledgeBase.objects.filter(is_active=True)
+    
+    mejor_match = None
+    mejor_score = 0.0
+    
+    for item in knowledge_items:
+        # Comparar con la pregunta almacenada
+        similitud_pregunta = SequenceMatcher(None, pregunta_normalizada, item.question.lower()).ratio()
+        
+        # Comparar con keywords si existen
+        similitud_keywords = 0.0
+        if item.keywords:
+            for keyword in item.keywords.split(','):
+                keyword_limpio = keyword.strip().lower()
+                sim_kw = SequenceMatcher(None, pregunta_normalizada, keyword_limpio).ratio()
+                similitud_keywords = max(similitud_keywords, sim_kw)
+        
+        # Tomar la mejor similitud
+        score_final = max(similitud_pregunta, similitud_keywords * 0.8)
+        
+        if score_final > mejor_score:
+            mejor_score = score_final
+            mejor_match = item
+    
+    return mejor_match, mejor_score
 
 
 def _encontrar_mejor_coincidencia(pregunta: str) -> Tuple[Optional[ChatbotKnowledgeBase], float]:
@@ -151,21 +243,59 @@ def procesar_consulta_con_ia(pregunta: str, user_id=None, session_id='anonymous'
             return cached_response
     
     try:
-        # Buscar la mejor coincidencia usando IA
-        best_match, similarity_score = _encontrar_mejor_coincidencia(pregunta)
+        # SISTEMA DE BÚSQUEDA MULTI-NIVEL
+        best_match = None
+        similarity_score = 0.0
+        search_method = "none"
         
+        # NIVEL 1: Búsqueda por Embeddings/IA (más precisa)
+        try:
+            best_match, similarity_score = _encontrar_mejor_coincidencia(pregunta)
+            if best_match and similarity_score >= SIMILARITY_THRESHOLD:
+                search_method = "ai_embeddings"
+                logger.info(f"Encontrado por IA: {similarity_score:.3f}")
+        except (ModelNotAvailableError, NoKnowledgeBaseError) as e:
+            logger.warning(f"Embeddings no disponibles: {e}")
+        
+        # NIVEL 2: Búsqueda por Keywords (si IA no encontró nada bueno)
+        if not best_match or similarity_score < SIMILARITY_THRESHOLD:
+            keyword_match, keyword_score = _buscar_por_keywords(pregunta)
+            if keyword_match and keyword_score >= KEYWORD_MINIMUM_SCORE:
+                # Si keyword es mejor que AI, usar keyword
+                if keyword_score > similarity_score:
+                    best_match = keyword_match
+                    similarity_score = keyword_score
+                    search_method = "keywords"
+                    logger.info(f"Encontrado por keywords: {keyword_score:.3f}")
+        
+        # NIVEL 3: Búsqueda Fuzzy (si nada anterior funcionó)
+        if not best_match or similarity_score < KEYWORD_MINIMUM_SCORE:
+            fuzzy_match, fuzzy_score = _buscar_fuzzy(pregunta)
+            if fuzzy_match and fuzzy_score > similarity_score:
+                best_match = fuzzy_match
+                similarity_score = fuzzy_score
+                search_method = "fuzzy"
+                logger.info(f"Encontrado por fuzzy: {fuzzy_score:.3f}")
+        
+        # Preparar respuesta
         response = {
             'answer': None,
             'match_question': None,
             'score': similarity_score,
+            'search_method': search_method,
             'recommended_questions': [],
             'knowledge_id': None,
             'category': None,
             'cached': False
         }
         
-        if best_match and similarity_score >= SIMILARITY_THRESHOLD:
-            # Respuesta encontrada con confianza suficiente
+        # Si encontramos una coincidencia válida
+        if best_match and (
+            (search_method == "ai_embeddings" and similarity_score >= SIMILARITY_THRESHOLD) or
+            (search_method == "keywords" and similarity_score >= KEYWORD_MINIMUM_SCORE) or
+            (search_method == "fuzzy" and similarity_score >= 0.6)  # Mayor threshold para fuzzy
+        ):
+            # Respuesta encontrada
             response.update({
                 'answer': best_match.answer,
                 'match_question': best_match.question,
@@ -240,4 +370,4 @@ def procesar_consulta_con_ia(pregunta: str, user_id=None, session_id='anonymous'
             'category': None,
             'cached': False,
             'error': str(e)
-        } 
+        }

@@ -5,7 +5,7 @@ from typing import Optional
 from django.contrib.auth import get_user_model
 
 from ..models import ChatbotKnowledgeBase, ChatConversation
-from .cache_service import invalidate_stats_cache
+from .service_cache import invalidate_stats_cache
 
 logger = logging.getLogger(__name__)
 User = get_user_model()

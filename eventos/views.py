@@ -23,9 +23,8 @@ class EventoViewSet(AuditModelViewSet):
     Hereda de `AuditModelViewSet` para registrar automáticamente qué usuario
     crea o modifica un evento.
     """
-    # Optimizamos la consulta para incluir el autor y la categoría.
-    # Ya no se necesita '__profile' porque los datos están en el modelo de autor.
-    queryset = Evento.objects.select_related('autor', 'categoria').all()
+    # Optimizamos y filtramos la consulta para incluir solo eventos publicados.
+    queryset = Evento.objects.filter(publicado=True).select_related('autor', 'categoria').all()
     serializer_class = EventoSerializer
     filterset_class = EventoFilter
     filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]

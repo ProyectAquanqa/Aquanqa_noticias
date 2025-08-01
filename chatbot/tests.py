@@ -105,7 +105,7 @@ class ChatbotSerializersTestCase(TestCase):
             created_by=self.user,
             updated_by=self.user
         )
-
+        
     def test_chatbot_query_serializer_valid(self):
         """Prueba el serializer de consultas con datos válidos."""
         data = {'question': '¿Cómo puedo ayudarte hoy?'}
@@ -149,8 +149,8 @@ class ChatbotSerializersTestCase(TestCase):
             user=self.user,
             question_text='¿Pregunta de prueba?',  # Campo correcto
             answer_text='Respuesta de prueba.',    # Campo correcto
-            session_id='test_session'
-        )
+                session_id='test_session'
+            )
         serializer = ChatConversationSerializer(conversation)
         data = serializer.data
         
@@ -183,7 +183,7 @@ class ChatbotServicesTestCase(TestCase):
             created_by=self.user,
             updated_by=self.user
         )
-
+        
     def test_procesar_consulta_chatbot(self):
         """Prueba el procesamiento de consultas del chatbot."""
         response = procesar_consulta_chatbot('¿Necesito ayuda?')
@@ -243,7 +243,7 @@ class ChatbotAPITestCase(APITestCase):
             created_by=self.user,
             updated_by=self.user
         )
-
+        
     def test_chatbot_query_endpoint(self):
         """Prueba el endpoint de consultas del chatbot."""
         url = '/api/chatbot/query/'

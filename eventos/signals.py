@@ -35,4 +35,4 @@ def trigger_notification(evento):
     # TODO: ¡Crítico en producción! Esta llamada debe ser asíncrona.
     # Usar Celery u otro sistema de colas para no bloquear la petición HTTP.
     # Ejemplo: send_push_notification.delay(notificacion.id)
-    send_push_notification(notificacion.id) 
+    send_push_notification(notificacion.id)

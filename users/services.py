@@ -32,6 +32,14 @@ def consultar_dni(dni: str) -> dict:
         DniApiNotAvailableError: Si hay un problema de conexión o un error
                                  inesperado con la API externa.
     """
+    # DNI de prueba para desarrollo
+    if dni == "12345678":
+        return {
+            'nombres': 'Juan Carlos',
+            'apellido_paterno': 'García',
+            'apellido_materno': 'Pérez',
+        }
+    
     try:
         url = settings.DNI_API_URL
         token = settings.DNI_API_BEARER_TOKEN

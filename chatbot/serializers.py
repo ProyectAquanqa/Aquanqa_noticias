@@ -27,7 +27,7 @@ class ChatbotQuerySerializer(serializers.Serializer):
 
 
 class ChatbotKnowledgeBaseSerializer(serializers.ModelSerializer):
-    category_name = serializers.CharField(source='category.name', read_only=True)
+    category_data = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(source='created_by.username', read_only=True)
     updated_by_username = serializers.CharField(source='updated_by.username', read_only=True)
     recommended_questions_count = serializers.SerializerMethodField()
@@ -35,12 +35,30 @@ class ChatbotKnowledgeBaseSerializer(serializers.ModelSerializer):
     class Meta:
         model = ChatbotKnowledgeBase
         fields = [
-            'id', 'category', 'category_name', 'question', 'answer', 'keywords',
+            'id', 'category', 'category_data', 'question', 'answer', 'keywords',
             'is_active', 'view_count', 'recommended_questions', 'recommended_questions_count',
-            'created_by', 'created_by_username', 'updated_by', 'updated_by_username',
+            'question_embedding', 'created_by', 'created_by_username', 'updated_by', 'updated_by_username',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'view_count', 'created_by', 'updated_by', 'created_at', 'updated_at']
+
+    def get_category_data(self, obj):
+        if obj.category:
+            return {
+                'id': obj.category.id,
+                'name': obj.category.name,
+                'description': obj.category.description
+            }
+        return None
+
+    def to_representation(self, instance):
+        """
+        Sobrescribir para mantener compatibilidad con el frontend
+        """
+        representation = super().to_representation(instance)
+        # Mover category_data a category para el frontend
+        representation['category'] = representation.pop('category_data', None)
+        return representation
 
     def get_recommended_questions_count(self, obj):
         return obj.recommended_questions.filter(is_active=True).count()
@@ -77,10 +95,10 @@ class RecommendedQuestionSerializer(serializers.ModelSerializer):
 
 
 class ChatConversationSerializer(serializers.ModelSerializer):
-    user_username = serializers.CharField(source='user.username', read_only=True)
+    user_username = serializers.SerializerMethodField()
     user_full_name = serializers.SerializerMethodField()
-    matched_question = serializers.CharField(source='matched_knowledge.question', read_only=True)
-    matched_category = serializers.CharField(source='matched_knowledge.category.name', read_only=True)
+    matched_question = serializers.SerializerMethodField()
+    matched_category = serializers.SerializerMethodField()
     conversation_date = serializers.DateTimeField(source='created_at', read_only=True, format='%Y-%m-%d %H:%M:%S')
     
     class Meta:
@@ -92,10 +110,21 @@ class ChatConversationSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
+    def get_user_username(self, obj):
+        return obj.user.username if obj.user else None
+
     def get_user_full_name(self, obj):
         if obj.user:
             return f"{obj.user.first_name} {obj.user.last_name}".strip() or obj.user.username
         return "Usuario Anónimo"
+
+    def get_matched_question(self, obj):
+        return obj.matched_knowledge.question if obj.matched_knowledge else None
+
+    def get_matched_category(self, obj):
+        if obj.matched_knowledge and obj.matched_knowledge.category:
+            return obj.matched_knowledge.category.name
+        return None
 
 
 class ChatbotCategorySerializer(serializers.ModelSerializer):
@@ -105,7 +134,7 @@ class ChatbotCategorySerializer(serializers.ModelSerializer):
     
     class Meta:
         model = ChatbotCategory
-        fields = ['id', 'name', 'description', 'knowledge_count', 'active_knowledge_count', 'total_views', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'is_active', 'knowledge_count', 'active_knowledge_count', 'total_views', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
     def get_knowledge_count(self, obj):

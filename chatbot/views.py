@@ -11,11 +11,12 @@ from rest_framework.permissions import AllowAny
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from django.utils import timezone
 
-from .models import ChatbotKnowledgeBase, ChatConversation
+from .models import ChatbotKnowledgeBase, ChatConversation, ChatbotCategory
 from .serializers import (
     ChatbotQuerySerializer,
     ChatbotKnowledgeBaseSerializer,
-    ChatConversationSerializer
+    ChatConversationSerializer,
+    ChatbotCategorySerializer
 )
 from .services import (
     procesar_consulta_chatbot,
@@ -42,24 +43,43 @@ class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
         else:
-            permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA', 'Trabajador')]
+            # Temporalmente permitir acceso a cualquier usuario autenticado
+            permission_classes = [permissions.IsAuthenticated]
         return [permission() if isinstance(permission, type) else permission for permission in permission_classes]
 
     def list(self, request, *args, **kwargs):
         try:
             response = super().list(request, *args, **kwargs)
-            return Response({"status": "success", "data": response.data})
+            return Response({
+                "status": "success",
+                "data": response.data
+            })
         except Exception as e:
             logger.error(f"Error al listar base de conocimiento: {e}")
-            return Response({"status": "error", "error": "Error interno del servidor"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({
+                "status": "error",
+                "error": {
+                    "code": "server_error",
+                    "message": "Error interno del servidor"
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def create(self, request, *args, **kwargs):
         try:
             response = super().create(request, *args, **kwargs)
-            return Response({"status": "success", "data": response.data}, status=status.HTTP_201_CREATED)
+            return Response({
+                "status": "success",
+                "data": response.data
+            }, status=status.HTTP_201_CREATED)
         except Exception as e:
             logger.error(f"Error al crear entrada: {e}")
-            return Response({"status": "error", "error": "Error al crear la entrada"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "status": "error",
+                "error": {
+                    "code": "server_error",
+                    "message": "Error interno del servidor"
+                }
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     def retrieve(self, request, *args, **kwargs):
         try:
@@ -117,17 +137,108 @@ class ChatbotKnowledgeBaseViewSet(AuditModelViewSet):
             logger.error(f"Error al obtener estadísticas: {e}")
             return Response({"status": "error", "error": "Error al obtener estadísticas"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+    @extend_schema(
+        summary="Importación Masiva de Conocimientos",
+        description="Permite importar múltiples entradas de base de conocimiento desde un archivo JSON"
+    )
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsInGroup('Admin', 'QA')])
+    def bulk_import(self, request):
+        try:
+            if 'file' not in request.FILES:
+                return Response({"status": "error", "error": "No se proporcionó ningún archivo"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            file = request.FILES['file']
+            if not file.name.endswith('.json'):
+                return Response({"status": "error", "error": "El archivo debe ser un JSON válido"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            import json
+            try:
+                data = json.load(file)
+            except json.JSONDecodeError:
+                return Response({"status": "error", "error": "El archivo JSON no es válido"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if not isinstance(data, list):
+                return Response({"status": "error", "error": "El JSON debe contener una lista de objetos"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            imported_count = 0
+            errors = []
+            
+            for item in data:
+                try:
+                    serializer = ChatbotKnowledgeBaseSerializer(data=item, context={'request': request})
+                    if serializer.is_valid():
+                        serializer.save(created_by=request.user, updated_by=request.user)
+                        imported_count += 1
+                    else:
+                        errors.append(f"Error en elemento: {serializer.errors}")
+                except Exception as e:
+                    errors.append(f"Error procesando elemento: {str(e)}")
+            
+            return Response({
+                "status": "success", 
+                "data": {
+                    "imported": imported_count,
+                    "total": len(data),
+                    "errors": errors[:10] if errors else []  # Limitar errores mostrados
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as e:
+            logger.error(f"Error en importación masiva: {e}")
+            return Response({"status": "error", "error": "Error interno en importación masiva"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @extend_schema(
+        summary="Regenerar Embeddings",
+        description="Regenera los embeddings de todas las entradas de la base de conocimiento"
+    )
+    @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated, IsInGroup('Admin', 'QA')])
+    def regenerate_embeddings(self, request):
+        try:
+            from django.core.management import call_command
+            from io import StringIO
+            
+            # Capturar la salida del comando
+            out = StringIO()
+            
+            # Ejecutar el comando de generación de embeddings
+            call_command('generate_embeddings', stdout=out)
+            
+            # Contar cuántas entradas fueron actualizadas
+            updated_count = ChatbotKnowledgeBase.objects.exclude(question_embedding__isnull=True).count()
+            
+            return Response({
+                "status": "success", 
+                "data": {
+                    "message": "Embeddings regenerados exitosamente",
+                    "updated_count": updated_count,
+                    "details": out.getvalue()
+                }
+            })
+            
+        except Exception as e:
+            logger.error(f"Error al regenerar embeddings: {e}")
+            return Response({
+                "status": "error", 
+                "error": f"Error al regenerar embeddings: {str(e)}"
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @extend_schema(tags=['Conversations'])
 class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = ChatConversation.objects.all().select_related('user', 'matched_knowledge')
+    queryset = ChatConversation.objects.all()
     serializer_class = ChatConversationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+    
+    def get_permissions(self):
+        """
+        Configurar permisos para el viewset de conversaciones
+        """
+        permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+        return [permission() if isinstance(permission, type) else permission for permission in permission_classes]
 
     def list(self, request, *args, **kwargs):
         try:
             response = super().list(request, *args, **kwargs)
-            return Response({"status": "success", "data": response.data})
+            return response
         except Exception as e:
             logger.error(f"Error al listar conversaciones: {e}")
             return Response({"status": "error", "error": "Error interno del servidor"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -138,7 +249,62 @@ class ChatConversationViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"status": "success", "data": response.data})
         except Exception as e:
             logger.error(f"Error al obtener conversación: {e}")
-            return Response({"status": "error", "error": "Conversación no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+            return Response({"status": "error", "error": "Error interno del servidor"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@extend_schema(tags=['Chatbot Categories'])
+class ChatbotCategoryViewSet(viewsets.ModelViewSet):
+    queryset = ChatbotCategory.objects.all()
+    serializer_class = ChatbotCategorySerializer
+    permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+
+    def get_permissions(self):
+        """Sobrescribir get_permissions para instanciar correctamente IsInGroup."""
+        permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
+        return [permission() if isinstance(permission, type) else permission for permission in permission_classes]
+
+    def list(self, request, *args, **kwargs):
+        try:
+            response = super().list(request, *args, **kwargs)
+            return Response({
+                "status": "success", 
+                "data": response.data
+            }, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error(f"Error al listar categorías: {e}")
+            return Response({"status": "error", "error": "Error interno del servidor"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def create(self, request, *args, **kwargs):
+        try:
+            response = super().create(request, *args, **kwargs)
+            return Response({"status": "success", "data": response.data}, status=status.HTTP_201_CREATED)
+        except Exception as e:
+            logger.error(f"Error al crear categoría: {e}")
+            return Response({"status": "error", "error": "Error al crear la categoría"}, status=status.HTTP_400_BAD_REQUEST)
+
+    def retrieve(self, request, *args, **kwargs):
+        try:
+            response = super().retrieve(request, *args, **kwargs)
+            return Response({"status": "success", "data": response.data})
+        except Exception as e:
+            logger.error(f"Error al obtener categoría: {e}")
+            return Response({"status": "error", "error": "Categoría no encontrada"}, status=status.HTTP_404_NOT_FOUND)
+
+    def update(self, request, *args, **kwargs):
+        try:
+            response = super().update(request, *args, **kwargs)
+            return Response({"status": "success", "data": response.data})
+        except Exception as e:
+            logger.error(f"Error al actualizar categoría: {e}")
+            return Response({"status": "error", "error": "Error al actualizar la categoría"}, status=status.HTTP_400_BAD_REQUEST)
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            super().destroy(request, *args, **kwargs)
+            return Response({"status": "success", "data": {"message": "Categoría eliminada exitosamente"}}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            logger.error(f"Error al eliminar categoría: {e}")
+            return Response({"status": "error", "error": "Error al eliminar la categoría"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 @extend_schema(tags=['Chatbot Query'])

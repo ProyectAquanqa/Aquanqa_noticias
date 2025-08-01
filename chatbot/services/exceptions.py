@@ -1,33 +1,49 @@
-"""Excepciones del chatbot."""
+"""
+Excepciones personalizadas del módulo chatbot.
+"""
+
 
 class ChatbotServiceError(Exception):
-    """Clase base para errores en servicios del chatbot."""
+    """Excepción base para errores del servicio de chatbot."""
     pass
+
 
 class ModelNotAvailableError(ChatbotServiceError):
-    """Lanzada cuando el modelo de IA no está disponible."""
+    """Se lanza cuando el modelo de IA no está disponible."""
     pass
+
 
 class NoKnowledgeBaseError(ChatbotServiceError):
-    """Lanzada cuando no hay base de conocimiento disponible."""
+    """Se lanza cuando no hay base de conocimiento disponible."""
     pass
+
 
 class InvalidQuestionError(ChatbotServiceError):
-    """Lanzada cuando la pregunta es inválida."""
+    """Se lanza cuando una pregunta es inválida."""
     pass
+
 
 class RateLimitError(ChatbotServiceError):
-    """Lanzada cuando se excede el límite de consultas."""
+    """Se lanza cuando se excede el límite de consultas."""
     pass
 
-class CacheError(ChatbotServiceError):
-    """Lanzada cuando hay problemas con el sistema de caché."""
+
+# Nuevas excepciones para Knowledge Management
+class KnowledgeNotFoundError(ChatbotServiceError):
+    """Se lanza cuando no se encuentra una entrada de conocimiento."""
     pass
 
-class ConversationError(ChatbotServiceError):
-    """Lanzada cuando hay problemas registrando conversaciones."""
+
+class CategoryNotFoundError(ChatbotServiceError):
+    """Se lanza cuando no se encuentra una categoría."""
     pass
 
-class KnowledgeBaseError(ChatbotServiceError):
-    """Lanzada cuando hay problemas con la base de conocimiento."""
+
+class KnowledgeDuplicateError(ChatbotServiceError):
+    """Se lanza cuando se intenta crear una pregunta que ya existe."""
+    pass
+
+
+class InvalidKnowledgeDataError(ChatbotServiceError):
+    """Se lanza cuando los datos de conocimiento son inválidos."""
     pass 

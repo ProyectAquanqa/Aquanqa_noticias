@@ -1,5 +1,7 @@
 from django.db import models
 from django.conf import settings
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from core.models import BaseModelWithAudit
 import uuid
 
@@ -7,6 +9,7 @@ import uuid
 class ChatbotCategory(BaseModelWithAudit):
     name = models.CharField(max_length=100, unique=True, verbose_name="Nombre")
     description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True, verbose_name="Activo")
 
     class Meta:
         verbose_name = "Categoría de Chatbot"
@@ -38,10 +41,43 @@ class ChatbotKnowledgeBase(BaseModelWithAudit):
     class Meta:
         verbose_name = "Base de Conocimiento del Chatbot"
         verbose_name_plural = "Bases de Conocimiento del Chatbot"
-        ordering = ['-view_count']
+        ordering = ['-created_at']  # Ordenar por más reciente primero
 
     def __str__(self):
         return self.question
+
+    def generate_embedding(self):
+        """Generar embedding para la pregunta usando el modelo AI"""
+        try:
+            from .services.service_ai import _ModelManager
+            
+            model_manager = _ModelManager()
+            if not model_manager.model:
+                model_manager._load_model()
+            
+            if model_manager.model:
+                embedding = model_manager.model.encode([self.question])
+                self.question_embedding = embedding[0].tolist()
+                return True
+        except Exception as e:
+            print(f"Error generando embedding: {e}")
+        return False
+
+
+@receiver(post_save, sender=ChatbotKnowledgeBase)
+def generate_embedding_on_save(sender, instance, created, **kwargs):
+    """Signal para generar embedding automáticamente al crear o actualizar"""
+    # Solo generar si no tiene embedding o si la pregunta cambió
+    if not instance.question_embedding or created:
+        # Evitar recursión infinita
+        if not hasattr(instance, '_generating_embedding'):
+            instance._generating_embedding = True
+            if instance.generate_embedding():
+                # Guardar sin disparar el signal otra vez
+                ChatbotKnowledgeBase.objects.filter(pk=instance.pk).update(
+                    question_embedding=instance.question_embedding
+                )
+            delattr(instance, '_generating_embedding')
 
 class ChatConversation(BaseModelWithAudit):
     session_id = models.CharField(max_length=255, default=uuid.uuid4, verbose_name="ID de Sesión")
