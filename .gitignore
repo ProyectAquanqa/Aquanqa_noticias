@@ -3,6 +3,7 @@ venv/
 myvenv/
 .venv/
 
+#
 # Archivos de configuración de IDEs
 .vscode/
 .idea/
@@ -18,4 +19,3 @@ __pycache__/
 # archivos del sistema
 .DS_Store
 Thumbs.db
-
