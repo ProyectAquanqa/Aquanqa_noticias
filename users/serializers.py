@@ -43,6 +43,9 @@ class UsuarioSerializer(serializers.ModelSerializer):
         queryset=Group.objects.all()
     )
     
+    # Campo para validar contraseña actual al cambiar contraseña
+    current_password = serializers.CharField(write_only=True, required=False)
+    
     # Campos calculados para el frontend
     full_name = serializers.SerializerMethodField()
     groups_count = serializers.SerializerMethodField()
@@ -52,7 +55,7 @@ class UsuarioSerializer(serializers.ModelSerializer):
     class Meta:
         model = Usuario
         fields = (
-            'id', 'username', 'first_name', 'last_name', 'email', 'password',
+            'id', 'username', 'first_name', 'last_name', 'email', 'password', 'current_password',
             'foto_perfil', 'firma', 'groups', 'is_staff', 'is_active', 
             'date_joined', 'last_login', 'created_at', 'updated_at',
             'created_by', 'updated_by',
@@ -105,13 +108,32 @@ class UsuarioSerializer(serializers.ModelSerializer):
     
     def update(self, instance, validated_data):
         """
-        Actualización personalizada para manejar grupos y validaciones.
+        Actualización personalizada para manejar grupos, contraseñas y validaciones.
         """
         groups_data = validated_data.pop('groups', None)
+        password = validated_data.pop('password', None)
+        current_password = validated_data.pop('current_password', None)
         
-        # Actualizar campos básicos
+        # Si se intenta cambiar la contraseña, validar la contraseña actual
+        if password:
+            if not current_password:
+                raise serializers.ValidationError({
+                    'current_password': 'La contraseña actual es requerida para cambiar la contraseña.'
+                })
+            
+            # Verificar que la contraseña actual es correcta
+            if not instance.check_password(current_password):
+                raise serializers.ValidationError({
+                    'current_password': 'La contraseña actual es incorrecta.'
+                })
+        
+        # Actualizar campos básicos (excepto contraseña que se maneja por separado)
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
+        
+        # Manejar contraseña por separado para asegurar el hash correcto
+        if password:
+            instance.set_password(password)
         
         # Actualizar grupos si se proporcionan
         if groups_data is not None:

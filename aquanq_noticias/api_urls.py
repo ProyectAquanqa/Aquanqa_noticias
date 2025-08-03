@@ -30,6 +30,7 @@ from chatbot.views import (
     ChatbotCategoryViewSet
 )
 from notificaciones.views import DeviceTokenViewSet, NotificacionViewSet
+from almuerzos.views import AlmuerzoViewSet
 
 router = DefaultRouter()
 router.register(r'eventos', EventoViewSet, basename='evento')
@@ -40,6 +41,7 @@ router.register(r'chatbot-categories', ChatbotCategoryViewSet, basename='chatbot
 router.register(r'users', UsuarioViewSet, basename='users')
 router.register(r'notifications', NotificacionViewSet, basename='notification')
 router.register(r'fcm-token', DeviceTokenViewSet, basename='fcm-token')
+router.register(r'almuerzos', AlmuerzoViewSet, basename='almuerzo')
 
 
 urlpatterns = [

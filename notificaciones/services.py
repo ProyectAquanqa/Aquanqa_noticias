@@ -103,4 +103,5 @@ def _handle_failed_tokens(batch_response, tokens):
                     logger.info(f"Token desactivado por ser inválido: {token[:20]}...")
 
     if failed_tokens:
-        logger.warning(f"Fallaron {len(failed_tokens)} tokens de {len(tokens)} totales."
+        logger.warning(f"Fallaron {len(failed_tokens)} tokens de {len(tokens)} totales.")
+

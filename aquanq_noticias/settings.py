@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     'chatbot.apps.ChatbotConfig',
     'users.apps.UsersConfig',
     'notificaciones.apps.NotificacionesConfig',
+    'almuerzos.apps.AlmuerzosConfig',
 
     # Librerías de terceros
     'rest_framework',
@@ -175,6 +176,7 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Knowledge', 'description': 'Endpoints para la gestión del conocimiento del chatbot.'},
         {'name': 'Chat History', 'description': 'Endpoints para la consulta del historial de conversaciones del chatbot.'},
         {'name': 'Notificaciones', 'description': 'Endpoints para la gestión de notificaciones push y dispositivos.'},
+        {'name': 'Almuerzos', 'description': 'Endpoints para la gestión de menús diarios de almuerzo.'},
     ],
 }
 
