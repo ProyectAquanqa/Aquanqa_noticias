@@ -18,8 +18,8 @@ class AlmuerzoSerializer(serializers.ModelSerializer):
         model = Almuerzo
         fields = [
             'id', 'fecha', 'entrada', 'plato_fondo', 'refresco', 
-            'es_feriado', 'link', 'nombre_dia', 'created_at', 
-            'updated_at', 'created_by', 'updated_by'
+            'es_feriado', 'link', 'active', 'dieta', 'nombre_dia', 
+            'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
         read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
     

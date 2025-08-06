@@ -22,10 +22,11 @@ environ.Env.read_env(str(BASE_DIR.joinpath('.env')))
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env.bool('DEBUG', default=False)
 
-ALLOWED_HOSTS = ['10.232.127.44', '127.0.0.1', 'localhost', '192.168.18.13']
+ALLOWED_HOSTS = ['172.16.11.29', '127.0.0.1', 'localhost', '192.168.18.13']
 
 # Configuración de CORS (Cross-Origin Resource Sharing)
 CORS_ALLOW_ALL_ORIGINS = True
+
 
 
 
@@ -150,16 +151,37 @@ REST_FRAMEWORK = {
         'rest_framework_simplejwt.authentication.JWTAuthentication',
         'rest_framework.authentication.SessionAuthentication',
     ],
-    # Permitir que los ViewSets manejen manualmente formatos como CSV
-    'URL_FORMAT_OVERRIDE': None,  # Desactivar el formato automático por URL
 }
 
 # Configuración de JWT (JSON Web Token)
+# Configuración optimizada para aplicaciones móviles con sesiones persistentes
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    # Access token más duradero para mejor UX móvil (4 horas)
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=4),
+    
+    # Refresh token de larga duración para sesiones persistentes (7 días)
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
+    
+    # Rotación habilitada para seguridad pero con tokens más duraderos
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
+    
+    # Configuraciones adicionales para mejor manejo móvil
+    'UPDATE_LAST_LOGIN': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': SECRET_KEY,
+    'VERIFYING_KEY': None,
+    'AUDIENCE': None,
+    'ISSUER': None,
+    
+    # Headers
+    'AUTH_HEADER_TYPES': ('Bearer',),
+    'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
+    
+    # Sliding tokens deshabilitado para usar rotación
+    'SLIDING_TOKEN_REFRESH_EXP_CLAIM': 'refresh_exp',
+    'SLIDING_TOKEN_LIFETIME': timedelta(minutes=5),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=1),
 }
 
 # Configuración de drf-spectacular
@@ -176,7 +198,6 @@ SPECTACULAR_SETTINGS = {
         {'name': 'Knowledge', 'description': 'Endpoints para la gestión del conocimiento del chatbot.'},
         {'name': 'Chat History', 'description': 'Endpoints para la consulta del historial de conversaciones del chatbot.'},
         {'name': 'Notificaciones', 'description': 'Endpoints para la gestión de notificaciones push y dispositivos.'},
-        {'name': 'Almuerzos', 'description': 'Endpoints para la gestión de menús diarios de almuerzo.'},
     ],
 }
 
@@ -187,5 +208,3 @@ DNI_API_BEARER_TOKEN = env('DNI_API_BEARER_TOKEN')
 # Firebase Cloud Messaging (FCM) para notificaciones push.
 # La inicialización se realiza en notificaciones/apps.py
 FIREBASE_ADMIN_CREDENTIALS_PATH = env('FIREBASE_ADMIN_CREDENTIALS_PATH', default=str(BASE_DIR / 'firebase-credentials.json'))
-
-

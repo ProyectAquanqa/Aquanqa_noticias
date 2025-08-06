@@ -41,6 +41,18 @@ class Almuerzo(BaseModelWithAudit):
         verbose_name="Link de pedido",
         help_text="Link para hacer el pedido del almuerzo"
     )
+    active = models.BooleanField(
+        default=True,
+        verbose_name="Activo",
+        help_text="Indica si el almuerzo está activo y disponible"
+    )
+    dieta = models.CharField(
+        max_length=100,
+        blank=True,
+        null=True,
+        verbose_name="Dieta",
+        help_text="Menú especial de dieta (opcional)"
+    )
 
     class Meta:
         ordering = ['fecha']

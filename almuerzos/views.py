@@ -21,7 +21,7 @@ class AlmuerzoViewSet(AuditModelViewSet):
     - Escritura (create, update, destroy): Solo usuarios en grupos 'Admin' o 'QA'
     
     Funcionalidades:
-    - Filtrado por es_feriado y fecha
+    - Filtrado por es_feriado, active y fecha
     - Búsqueda en campos entrada, plato_fondo, refresco
     - Ordenamiento por fecha (ascendente por defecto)
     """
@@ -29,7 +29,7 @@ class AlmuerzoViewSet(AuditModelViewSet):
     serializer_class = AlmuerzoSerializer
     filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]
     search_fields = ['entrada', 'plato_fondo', 'refresco']
-    filterset_fields = ['es_feriado', 'fecha']
+    filterset_fields = ['es_feriado', 'active', 'fecha']
     ordering_fields = ['fecha']
     ordering = ['fecha']
 
@@ -53,6 +53,7 @@ class AlmuerzoViewSet(AuditModelViewSet):
         
         Soporta filtrado por:
         - es_feriado: true/false para filtrar por días feriados
+        - active: true/false para filtrar por almuerzos activos/inactivos
         - fecha: fecha específica en formato YYYY-MM-DD
         
         Soporta búsqueda en campos entrada, plato_fondo y refresco.

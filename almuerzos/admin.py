@@ -16,19 +16,24 @@ class AlmuerzoAdmin(AuditModelAdmin):
         'entrada', 
         'plato_fondo', 
         'refresco',
-        'es_feriado', 
+        'es_feriado',
+        'active',
+        'dieta' ,
         'created_at', 
         'updated_at'
     )
-    list_filter = ('es_feriado', 'fecha')
-    search_fields = ('entrada', 'plato_fondo', 'refresco')
+    list_filter = ('es_feriado', 'active', 'fecha')
+    search_fields = ('entrada', 'plato_fondo', 'refresco', 'dieta')
     readonly_fields = ('created_by', 'updated_by', 'created_at', 'updated_at')
     ordering = ['fecha']
     date_hierarchy = 'fecha'
     
     fieldsets = (
         ('Información del Menú', {
-            'fields': ('fecha', 'entrada', 'plato_fondo', 'refresco', 'es_feriado', 'link')
+            'fields': ('fecha', 'entrada', 'plato_fondo', 'refresco', 'dieta')
+        }),
+        ('Configuración', {
+            'fields': ('es_feriado', 'active', 'link')
         }),
         ('Información de Auditoría', {
             'fields': ('created_by', 'updated_by', 'created_at', 'updated_at'),
