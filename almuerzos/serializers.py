@@ -4,42 +4,42 @@ from .models import Almuerzo
 
 class AlmuerzoSerializer(serializers.ModelSerializer):
     """
-    Serializador para el modelo Almuerzo.
+    Serializer optimizado para el modelo Almuerzo.
     
-    Incluye un campo calculado 'nombre_dia' que retorna el nombre del día
-    en español basado en la fecha del almuerzo. Los campos de auditoría
-    se configuran como solo lectura.
+    Incluye campos calculados y optimiza la respuesta de la API.
     """
+    
+    # Campos calculados
     nombre_dia = serializers.SerializerMethodField()
+    fecha_formateada = serializers.SerializerMethodField()
+    is_available = serializers.ReadOnlyField()
+    has_diet_menu = serializers.ReadOnlyField()
+    
+    # Campos de auditoría como solo lectura
     created_by = serializers.StringRelatedField(read_only=True)
     updated_by = serializers.StringRelatedField(read_only=True)
     
     class Meta:
         model = Almuerzo
         fields = [
-            'id', 'fecha', 'entrada', 'plato_fondo', 'refresco', 
-            'es_feriado', 'link', 'active', 'dieta', 'nombre_dia', 
+            # Información básica
+            'id', 'fecha', 'entrada', 'plato_fondo', 'refresco',
+            # Control y disponibilidad  
+            'es_feriado', 'active', 'link', 'dieta',
+            # Campos calculados
+            'nombre_dia', 'fecha_formateada', 'is_available', 'has_diet_menu',
+            # Auditoría
             'created_at', 'updated_at', 'created_by', 'updated_by'
         ]
-        read_only_fields = ['created_at', 'updated_at', 'created_by', 'updated_by']
+        read_only_fields = [
+            'created_at', 'updated_at', 'created_by', 'updated_by',
+            'is_available', 'has_diet_menu', 'fecha_formateada'
+        ]
     
-    def get_nombre_dia(self, obj):
-        """
-        Retorna el nombre del día en español calculado desde la fecha.
-        
-        Args:
-            obj (Almuerzo): Instancia del modelo Almuerzo
-            
-        Returns:
-            str: Nombre del día de la semana en español
-        """
-        dias_es = {
-            "Monday": "Lunes",
-            "Tuesday": "Martes",
-            "Wednesday": "Miércoles",
-            "Thursday": "Jueves",
-            "Friday": "Viernes",
-            "Saturday": "Sábado",
-            "Sunday": "Domingo"
-        }
-        return dias_es[obj.fecha.strftime("%A")]
+    def get_nombre_dia(self, obj) -> str:
+        """Retorna el nombre del día en español."""
+        return obj.nombre_dia()
+    
+    def get_fecha_formateada(self, obj) -> str:
+        """Retorna la fecha formateada como 'Lunes 18 de agosto'."""
+        return obj.fecha_formateada()

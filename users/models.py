@@ -29,3 +29,24 @@ class Usuario(AbstractUser, BaseModelWithAudit):
 
     def __str__(self):
         return self.username
+
+    def save(self, *args, **kwargs):
+        # Primero, obtenemos el estado del objeto antes de guardarlo
+        if self.pk:  # Si el objeto ya tiene una clave primaria, significa que ya existe
+            try:
+                old_instance = Usuario.objects.get(pk=self.pk)
+                
+                # Comprobar si la foto de perfil ha cambiado y eliminar la antigua
+                if old_instance.foto_perfil and self.foto_perfil != old_instance.foto_perfil:
+                    old_instance.foto_perfil.delete(save=False)
+                
+                # Comprobar si la firma ha cambiado y eliminar la antigua
+                if old_instance.firma and self.firma != old_instance.firma:
+                    old_instance.firma.delete(save=False)
+                    
+            except Usuario.DoesNotExist:
+                # Si por alguna razón el objeto no se encuentra, no hacemos nada
+                pass
+        
+        # Llamar al método save original para que el guardado se complete
+        super().save(*args, **kwargs)

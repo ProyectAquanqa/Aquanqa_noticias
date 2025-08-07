@@ -11,77 +11,61 @@ from core.viewsets import AuditModelViewSet
 @extend_schema(tags=['Almuerzos'])
 class AlmuerzoViewSet(AuditModelViewSet):
     """
-    Gestiona los menús diarios de almuerzo (CRUD) con permisos basados en roles.
+    ViewSet optimizado para gestión de almuerzos.
     
-    Hereda de `AuditModelViewSet` para registrar automáticamente qué usuario
-    crea o modifica un almuerzo.
+    Proporciona CRUD completo con permisos basados en roles
+    y filtrado avanzado para la API móvil.
     
     Permisos:
-    - Lectura (list, retrieve): Cualquier usuario autenticado
-    - Escritura (create, update, destroy): Solo usuarios en grupos 'Admin' o 'QA'
-    
-    Funcionalidades:
-    - Filtrado por es_feriado, active y fecha
-    - Búsqueda en campos entrada, plato_fondo, refresco
-    - Ordenamiento por fecha (ascendente por defecto)
+    - Lectura: Cualquier usuario autenticado
+    - Escritura: Solo Admin y QA
     """
+    
     queryset = Almuerzo.objects.all()
     serializer_class = AlmuerzoSerializer
-    filter_backends = [filters.OrderingFilter, filters.SearchFilter, DjangoFilterBackend]
-    search_fields = ['entrada', 'plato_fondo', 'refresco']
+    
+    # Configuración de filtros y búsqueda optimizada
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter, filters.SearchFilter]
     filterset_fields = ['es_feriado', 'active', 'fecha']
+    search_fields = ['entrada', 'plato_fondo', 'refresco', 'dieta']
     ordering_fields = ['fecha']
     ordering = ['fecha']
+    
+    # Jerarquía por fecha para admin
+    date_hierarchy = 'fecha'
 
     def get_permissions(self):
-        """
-        Asigna permisos basados en la acción solicitada.
-
-        - Escritura (create, update, destroy): Solo 'Admin' y 'QA'.
-        - Lectura (list, retrieve): Cualquier usuario autenticado.
-        """
+        """Asigna permisos según la acción."""
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
             permission_classes = [permissions.IsAuthenticated, IsInGroup('Admin', 'QA')]
         else:
             permission_classes = [permissions.IsAuthenticated]
-        return [permission() if isinstance(permission, type) else permission for permission in permission_classes]
+        
+        return [permission() for permission in permission_classes]
 
-    @extend_schema(summary="Listar Almuerzos")
+    @extend_schema(
+        summary="Listar Almuerzos",
+        description="Obtiene lista filtrable de almuerzos con filtros: es_feriado, active, fecha"
+    )
     def list(self, request, *args, **kwargs):
-        """
-        Obtiene una lista filtrable de almuerzos.
-        
-        Soporta filtrado por:
-        - es_feriado: true/false para filtrar por días feriados
-        - active: true/false para filtrar por almuerzos activos/inactivos
-        - fecha: fecha específica en formato YYYY-MM-DD
-        
-        Soporta búsqueda en campos entrada, plato_fondo y refresco.
-        Ordenado por fecha ascendente por defecto.
-        """
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(summary="Crear un Almuerzo (Admin/QA)")
+    @extend_schema(summary="Crear Almuerzo (Admin/QA)")
     def create(self, request, *args, **kwargs):
-        """Crea un nuevo almuerzo. Requiere permisos de Admin o QA."""
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(summary="Obtener un Almuerzo")
+    @extend_schema(summary="Obtener Almuerzo")
     def retrieve(self, request, *args, **kwargs):
-        """Obtiene los detalles de un almuerzo específico por su ID."""
         return super().retrieve(request, *args, **kwargs)
 
-    @extend_schema(summary="Actualizar un Almuerzo (Admin/QA)")
+    @extend_schema(summary="Actualizar Almuerzo (Admin/QA)")
     def update(self, request, *args, **kwargs):
-        """Actualiza completamente un almuerzo existente. Requiere permisos de Admin o QA."""
         return super().update(request, *args, **kwargs)
 
-    @extend_schema(summary="Actualización Parcial de un Almuerzo (Admin/QA)")
+    @extend_schema(summary="Actualización Parcial (Admin/QA)")
     def partial_update(self, request, *args, **kwargs):
-        """Actualiza parcialmente un almuerzo existente. Requiere permisos de Admin o QA."""
         return super().partial_update(request, *args, **kwargs)
 
-    @extend_schema(summary="Eliminar un Almuerzo (Admin/QA)")
+    @extend_schema(summary="Eliminar Almuerzo (Admin/QA)")
     def destroy(self, request, *args, **kwargs):
-        """Elimina un almuerzo existente. Requiere permisos de Admin o QA."""
         return super().destroy(request, *args, **kwargs)

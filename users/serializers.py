@@ -12,9 +12,29 @@ Usuario = get_user_model()
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     """
     Serializer de token personalizado para añadir datos del usuario a la respuesta.
+    También maneja errores específicos para distinguir entre usuario no existe vs contraseña incorrecta.
     """
     def validate(self, attrs):
-        # La validación por defecto se encarga de la autenticación
+        username = attrs.get('username')
+        password = attrs.get('password')
+        
+        # Primero verificar si el usuario existe
+        try:
+            user = Usuario.objects.get(username=username)
+        except Usuario.DoesNotExist:
+            # Usuario no existe - mensaje específico
+            raise serializers.ValidationError('Usuario no registrado')
+        
+        # Usuario existe, verificar si está activo
+        if not user.is_active:
+            raise serializers.ValidationError('Cuenta desactivada')
+        
+        # Usuario existe y está activo, verificar contraseña
+        if not user.check_password(password):
+            # Contraseña incorrecta - mensaje específico
+            raise serializers.ValidationError('Contraseña incorrecta')
+        
+        # Si llegamos aquí, todo está correcto, usar validación original
         data = super().validate(attrs)
 
         # Añadir datos del usuario al diccionario de respuesta
